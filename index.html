@@ -3,7 +3,7 @@
 <meta name="description" content="Every Outside The Odds selection, graded in the open: every selection, wins and losses.">
 <meta property="og:title" content="OTO Official Track Record"><meta property="og:description" content="Every selection, wins and losses">
 <link rel="icon" href="logo.png"><style>
-:root{--navy:#010a15;--navy2:#071a33;--gold:#e2c158;--gold2:#c9a227;--ink:#f3f5fa;--mut:#9fb0cc;--pos:#5fd38d;--neg:#ff7b7b;--line:#b08a22}
+:root{--navy:#010a15;--navy2:#071a33;--gold:#e2c158;--gold2:#c9a227;--ink:#f3f5fa;--mut:#9fb0cc;--pos:#5fd38d;--neg:#ff7b7b;--line:#b08a22;--push:#ffd84d}
 *{box-sizing:border-box}body{margin:0;background:var(--navy);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .wrap{max-width:880px;margin:0 auto;padding:20px 16px 40px}
 header{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--gold2);border-radius:14px;background:linear-gradient(135deg,var(--navy),var(--navy2))}
@@ -28,6 +28,18 @@ footer{color:var(--mut);font-size:12px;margin-top:18px;line-height:1.6}
 .pcs{display:none}.pc{border:1px solid rgba(201,162,39,.35);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#04101f}
 .l1{display:flex;align-items:center;gap:8px}.l1 b{flex:1;font-size:15.5px}.l1 span{color:var(--mut);font-size:13px}
 .l2{color:var(--mut);font-size:12.5px;margin:3px 0}.l3{display:flex;justify-content:space-between;font-weight:700;font-size:14px}.l3 span{color:var(--mut)}.l3 .pos,.l3 b.pos{color:var(--pos)}.l3 .neg,.l3 b.neg{color:var(--neg)}
+
+.flt{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px;align-items:center}.flt .fl{color:var(--mut);font-size:12.5px;margin-right:4px}
+.chip{background:#04101f;color:var(--ink);border:1px solid rgba(201,162,39,.35);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--gold2);color:#010a15;border-color:var(--gold2);font-weight:700}
+.chip:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.leg{display:flex;gap:14px;font-size:12.5px;color:var(--mut);margin:4px 2px 6px}.leg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+.pt{stroke:#04101f;stroke-width:1.5}.pt.win{fill:var(--pos)}.pt.loss{fill:var(--neg)}.pt.push{fill:var(--push)}
+.r.push{background:rgba(255,216,77,.15);color:var(--push)}
+.ln.draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 1.4s ease-out forwards}
+.pt.pop{opacity:0;animation:pop .35s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}@keyframes pop{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.ln.draw,.pt.pop{animation:none;stroke-dasharray:none;stroke-dashoffset:0;opacity:1}}
 @media (max-width:640px){.chw.wide{display:none}.chw.narrow{display:block}.pcs{display:block}.tw{display:none}.t{flex:1 1 40%}.hero .t .v{font-size:21px}}
 </style></head><body><div class="wrap">
 <header><img src="logo.png" alt="Outside The Odds"><div><h1>Official Track Record</h1>
@@ -37,17 +49,4 @@ footer{color:var(--mut);font-size:12px;margin-top:18px;line-height:1.6}
 <footer>Every selection is logged before its game starts and graded at the 10 AM market consensus line and price; open selections
 appear here only after they are graded. Units only. OTO endorses no sportsbook. For research, education and entertainment;
 not betting or financial advice; past results don't guarantee future results. 18+ or the legal age where you live. Gambling problem? Call 1-800-GAMBLER.</footer>
-</div><script>(function(){document.querySelectorAll('.ch').forEach(function(ch){
-var D=JSON.parse(ch.getAttribute('data-pts'));ch.querySelectorAll('.chw').forEach(function(w){
-var g=function(k){return parseFloat(w.getAttribute('data-'+k))},W=g('w'),H=g('h'),L=g('l'),R=g('r'),T=g('t'),B=g('b'),LO=g('lo'),HI=g('hi');
-var s=w.querySelector('svg'),tip=w.querySelector('.tip'),xh=w.querySelector('.xh'),hd=w.querySelector('.hd'),hit=w.querySelector('.hit');
-function X(i){return L+(W-L-R)*i/D.length}function Y(v){return T+(H-T-B)*(HI-v)/((HI-LO)||1)}
-function show(e){var r=s.getBoundingClientRect(),px=(e.clientX-r.left)/r.width*W,i=Math.round((px-L)/(W-L-R)*D.length);
-i=Math.max(1,Math.min(D.length,i));var d=D[i-1],cx=X(i),cy=Y(d.t);xh.setAttribute('x1',cx);xh.setAttribute('x2',cx);xh.style.display='';
-hd.setAttribute('cx',cx);hd.setAttribute('cy',cy);hd.style.display='';
-tip.innerHTML='<div class="th">'+d.d+' · '+d.r+' '+(d.u>0?'+':'')+d.u.toFixed(2)+'u</div><div>'+d.p.replace(/</g,'&lt;')+'</div><div>Running <b>'+(d.t>0?'+':'')+d.t.toFixed(2)+'u</b></div>';
-tip.style.display='block';var lx=cx/W*r.width;tip.style.left=Math.min(Math.max(lx-85,0),r.width-170)+'px';tip.style.top=Math.max(cy/H*r.height-72,0)+'px'}
-function hide(){tip.style.display='none';xh.style.display='none';hd.style.display='none'}
-hit.addEventListener('mousemove',show);hit.addEventListener('mouseleave',hide);
-hit.addEventListener('touchstart',function(e){show(e.touches[0])},{passive:true});hit.addEventListener('touchmove',function(e){show(e.touches[0])},{passive:true});
-})})})();</script></body></html>
+</div></body></html>
