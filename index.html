@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>OTO Official Track Record</title>
-<meta name="description" content="Every Outside The Odds selection, graded in the open: every selection, wins and losses.">
-<meta property="og:title" content="OTO Official Track Record"><meta property="og:description" content="Every selection, wins and losses">
+<meta name="description" content="Every Outside The Odds selection, graded in the open: 0-1, -1.00u.">
+<meta property="og:title" content="OTO Official Track Record"><meta property="og:description" content="0-1, -1.00u">
 <link rel="icon" href="logo.png"><style>
 :root{--navy:#010a15;--navy2:#071a33;--gold:#e2c158;--gold2:#c9a227;--ink:#f3f5fa;--mut:#9fb0cc;--pos:#5fd38d;--neg:#ff7b7b;--line:#c9d4e6;--push:#ffd84d}
 *{box-sizing:border-box}body{margin:0;background:var(--navy);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -44,9 +44,55 @@ footer{color:var(--mut);font-size:12px;margin-top:18px;line-height:1.6}
 </style></head><body><div class="wrap">
 <header><img src="logo.png" alt="Outside The Odds"><div><h1>Official Track Record</h1>
 <div class="sub">Every selection, wins and losses · updated Nov 1, 2026</div></div></header>
-<h2>Official record</h2><p class="empty">No graded selections yet.</p>
+<h2>Official record</h2><p class="note">Every selection posted to members before the game, graded at the 10 AM market consensus.</p><div class="flt" id="rec-flt-lg"></div><div class="flt" id="rec-flt-bt"></div><div class="hero" id="rec-hero"></div><div class="ch"><div class="cht"><b>Running units</b><span>one point per graded selection</span></div><div class="leg"><span><i style="background:var(--pos)"></i>Win</span><span><i style="background:var(--neg)"></i>Loss</span><span><i style="background:var(--push)"></i>Push</span></div><div class="chw" id="rec-chart"></div></div><div class="hero" id="rec-tiles"></div><p class="empty" id="rec-empty" style="display:none">No graded selections for this filter yet.</p><div class="pcs" id="rec-cards"></div><div class="tw"><table><thead><tr><th>Date</th><th>League</th><th>Bet</th><th>Selection</th><th>Odds</th><th>Units</th><th>Result</th><th>+/-</th><th>Running</th></tr></thead><tbody id="rec-rows"></tbody></table></div><script type="application/json" id="rec-data">[{"d": "Nov 1", "lg": "NFL", "bt": "Total", "p": "Under 46.5", "g": "IND @ JAX", "o": "-110", "s": 1.0, "r": "loss", "u": -1.0}]</script>
 
 <footer>Every selection is logged before its game starts and graded at the 10 AM market consensus line and price; open selections
 appear here only after they are graded. Units only. OTO endorses no sportsbook. For research, education and entertainment;
 not betting or financial advice; past results don't guarantee future results. 18+ or the legal age where you live. Gambling problem? Call 1-800-GAMBLER.</footer>
-</div></body></html>
+</div><script>(function(){
+var ROWS=JSON.parse(document.getElementById('rec-data').textContent),F={lg:'All',bt:'All'};
+var $=function(id){return document.getElementById(id)};
+function fu(x,p){return (p!==false&&x>0?'+':'')+x.toFixed(2)+'u'}function cls(x){return x>0?'pos':x<0?'neg':''}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function chips(id,key,vals){var el=$(id);if(vals.length<2){el.style.display='none';return}
+el.innerHTML='<span class="fl">'+(key=='lg'?'Sport':'Bet type')+'</span>'+['All'].concat(vals).map(function(v){
+return '<button class="chip" data-v="'+esc(v)+'" aria-pressed="'+(F[key]==v)+'">'+esc(v)+'</button>'}).join('');
+el.querySelectorAll('.chip').forEach(function(b){b.onclick=function(){F[key]=b.getAttribute('data-v');
+el.querySelectorAll('.chip').forEach(function(c){c.setAttribute('aria-pressed',c===b)});render(true)}})}
+function uniq(k){var s=[];ROWS.forEach(function(r){if(s.indexOf(r[k])<0)s.push(r[k])});return s.sort()}
+function chart(rs,animate){var box=$('rec-chart');if(rs.length<2){box.innerHTML='';box.parentNode.style.display='none';return}
+box.parentNode.style.display='';var W=Math.max(box.clientWidth,300),H=W<500?220:240,L=44,R=58,T=12,B=26,run=0,vals=[0];
+rs.forEach(function(r){run+=r.u;vals.push(run)});var lo=Math.min.apply(0,vals.concat([0])),hi=Math.max.apply(0,vals.concat([0])),span=Math.max(hi-lo,1);
+var st=[.5,1,2,5,10,20,50,100,200].filter(function(s){return span/s<=5})[0]||500,lt=st*Math.floor(lo/st),ht=st*Math.ceil(hi/st);
+var X=function(i){return L+(W-L-R)*i/(vals.length-1)},Y=function(v){return T+(H-T-B)*(ht-v)/((ht-lt)||1)};
+var g='';for(var t=lt;t<=ht+1e-9;t+=st){g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(t)+'" y2="'+Y(t)+'" class="gl'+(Math.abs(t)<1e-9?' z':'')+'"/><text x="'+(L-7)+'" y="'+(Y(t)+4)+'" text-anchor="end" class="ax">'+(t>0?'+':'')+t+'u</text>'}
+var pts=vals.map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1)}).join(' '),n=rs.length,rad=n>300?2.2:n>120?3:n>40?3.8:4.6;
+var dots=rs.map(function(r,i){return '<circle class="pt '+r.r+(animate?' pop':'')+'" r="'+rad+'" cx="'+X(i+1).toFixed(1)+'" cy="'+Y(vals[i+1]).toFixed(1)+'"'+(animate?' style="animation-delay:'+(0.2+1.2*(i+1)/n).toFixed(2)+'s"':'')+'/>'}).join('');
+var end=vals[vals.length-1];
+box.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Running units: '+fu(end)+' after '+n+' selections">'+g+
+'<polyline points="'+pts+'" class="ln'+(animate?' draw':'')+'"/>'+dots+
+'<text x="'+(X(vals.length-1)+9)+'" y="'+(Y(end)+4)+'" class="endl">'+fu(end)+'</text>'+
+'<text x="'+L+'" y="'+(H-7)+'" class="ax">'+esc(rs[0].d)+'</text><text x="'+(W-R)+'" y="'+(H-7)+'" text-anchor="end" class="ax">'+esc(rs[n-1].d)+'</text>'+
+'<line class="xh" y1="'+T+'" y2="'+(H-B)+'" style="display:none"/><rect class="hit" x="'+L+'" y="'+T+'" width="'+(W-L-R)+'" height="'+(H-T-B)+'" fill="transparent"/></svg><div class="tip"></div>';
+var ln=box.querySelector('.ln');if(animate&&ln.getTotalLength){ln.style.setProperty('--len',ln.getTotalLength())}
+var s=box.querySelector('svg'),tip=box.querySelector('.tip'),xh=box.querySelector('.xh'),hit=box.querySelector('.hit');
+function show(e){var b=s.getBoundingClientRect(),px=(e.clientX-b.left)/b.width*W,i=Math.round((px-L)/(W-L-R)*n);i=Math.max(1,Math.min(n,i));
+var r=rs[i-1],cx=X(i),cy=Y(vals[i]);xh.setAttribute('x1',cx);xh.setAttribute('x2',cx);xh.style.display='';
+tip.innerHTML='<div class="th">'+esc(r.d)+' · '+esc(r.lg)+' · <b class="'+cls(r.u)+'">'+r.r.toUpperCase()+' '+fu(r.u)+'</b></div><div>'+esc(r.p)+' '+esc(r.o)+'</div><div>Running <b>'+fu(vals[i])+'</b></div>';
+tip.style.display='block';var lx=cx/W*b.width;tip.style.left=Math.min(Math.max(lx-85,0),b.width-170)+'px';tip.style.top=Math.max(cy/H*b.height-74,0)+'px'}
+function hide(){tip.style.display='none';xh.style.display='none'}
+hit.addEventListener('mousemove',show);hit.addEventListener('mouseleave',hide);
+hit.addEventListener('touchstart',function(e){show(e.touches[0])},{passive:true});hit.addEventListener('touchmove',function(e){show(e.touches[0])},{passive:true})}
+function render(animate){var rs=ROWS.filter(function(r){return (F.lg=='All'||r.lg==F.lg)&&(F.bt=='All'||r.bt==F.bt)});
+var w=0,l=0,p=0,risk=0,units=0;rs.forEach(function(r){if(r.r=='win')w++;else if(r.r=='loss')l++;else p++;if(r.r!='push')risk+=r.s;units+=r.u});
+var roi=risk?100*units/risk:null,rec=w+'-'+l+(p?'-'+p:'');
+$('rec-hero').innerHTML='<div class="t"><div class="k">Units</div><div class="v '+cls(units)+'">'+fu(units)+'</div></div><div class="t"><div class="k">Record</div><div class="v">'+rec+'</div></div><div class="t"><div class="k">ROI</div><div class="v '+cls(roi||0)+'">'+(roi===null?'–':(roi>0?'+':'')+roi.toFixed(1)+'%')+'</div></div><div class="t"><div class="k">Selections graded</div><div class="v">'+rs.length+'</div></div>';
+var by={};rs.forEach(function(r){(by[r.lg]=by[r.lg]||[]).push(r)});
+$('rec-tiles').innerHTML=F.lg!='All'?'':Object.keys(by).sort().map(function(k){var x=by[k],uu=0,ww=0,ll=0;x.forEach(function(r){uu+=r.u;if(r.r=='win')ww++;if(r.r=='loss')ll++});
+return '<div class="t"><div class="k">'+esc(k)+'</div><div class="v '+cls(uu)+'">'+fu(uu)+'</div><div class="k">'+ww+'-'+ll+'</div></div>'}).join('');
+chart(rs,animate);var run=0,withRun=rs.map(function(r){run+=r.u;return [r,run]}).reverse();
+$('rec-rows').innerHTML=withRun.map(function(a){var r=a[0];return '<tr><td>'+esc(r.d)+'</td><td>'+esc(r.lg)+'</td><td>'+esc(r.bt)+'</td><td><b>'+esc(r.p)+'</b><span class="g">'+esc(r.g)+'</span></td><td>'+esc(r.o)+'</td><td>'+r.s+'u</td><td><span class="r '+r.r+'">'+r.r.toUpperCase()+'</span></td><td class="'+cls(r.u)+'">'+fu(r.u)+'</td><td class="'+cls(a[1])+'">'+fu(a[1])+'</td></tr>'}).join('');
+$('rec-cards').innerHTML=withRun.map(function(a){var r=a[0];return '<div class="pc"><div class="l1"><b>'+esc(r.p)+'</b><span>'+esc(r.o)+' · '+r.s+'u</span><span class="r '+r.r+'">'+r.r.toUpperCase()+'</span></div><div class="l2">'+esc(r.d)+' · '+esc(r.lg)+' · '+esc(r.bt)+' · '+esc(r.g)+'</div><div class="l3"><span class="'+cls(r.u)+'">'+fu(r.u)+'</span><span>Running <b class="'+cls(a[1])+'">'+fu(a[1])+'</b></span></div></div>'}).join('');
+$('rec-empty').style.display=rs.length?'none':''}
+chips('rec-flt-lg','lg',uniq('lg'));chips('rec-flt-bt','bt',uniq('bt'));render(true);
+var rt;window.addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(function(){render(false)},200)})})();</script></body></html>
