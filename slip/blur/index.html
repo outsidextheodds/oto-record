@@ -148,6 +148,21 @@ function toCanvas(img){
   const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
   const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0); return c;
 }
+/* Each pixel row filled with that row's median color = its background. Text is a minority of any row, so it vanishes completely. */
+function flatten(src){
+  const w = src.width, h = src.height, d = src.getContext("2d").getImageData(0, 0, w, h).data;
+  const out = document.createElement("canvas"); out.width = w; out.height = h;
+  const og = out.getContext("2d"), img = og.createImageData(w, h), o = img.data;
+  const step = Math.max(1, Math.floor(w / 120)), rs = [], gs = [], bs = [];
+  const med = a => { a.sort((x, y) => x - y); return a[a.length >> 1]; };
+  for (let y = 0; y < h; y++){
+    rs.length = gs.length = bs.length = 0;
+    for (let x = 0; x < w; x += step){ const i = (y * w + x) * 4; rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]); }
+    const r = med(rs), g = med(gs), b = med(bs);
+    for (let x = 0, i = y * w * 4; x < w; x++, i += 4){ o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = 255; }
+  }
+  og.putImageData(img, 0, 0); return out;
+}
 function soften(src){
   const w = src.width, h = src.height;
   const mid = document.createElement("canvas"); mid.width = Math.max(1, Math.round(w / 8)); mid.height = Math.max(1, Math.round(h / 8));
@@ -188,13 +203,16 @@ function finalBlob(it){
 }
 /* Draw marks m of item it onto g. ox/oy = top-left of the output in image px, k = output px per image px.
    Rows marked -> only rows sharp. No rows but a crop or hide box -> everything sharp. Nothing -> all blurred. Hide boxes blur on top. */
-function paint(g, it, m, ox, oy, k){
+function paint(g, it, m, ox, oy, k, preview){
   const W = it.w * k, H = it.h * k, X = -ox * k, Y = -oy * k;
   g.imageSmoothingQuality = "high";
   const piece = (srcC, b) => { const sx = b.x * it.w, sy = b.y * it.h, sw = b.w * it.w, sh = b.h * it.h;
     if (sw > 0 && sh > 0) g.drawImage(srcC, sx, sy, sw, sh, X + b.x * W, Y + b.y * H, b.w * W, b.h * H); };
   const anyMark = m.bands.length || m.hides.length || m.crop;
-  g.drawImage(m.bands.length || !anyMark ? it.soft : it.src, X, Y, W, H);
+  if (m.bands.length || !anyMark){
+    if (preview){ g.drawImage(it.src, X, Y, W, H); g.fillStyle = "rgba(5,7,12,0.6)"; g.fillRect(X, Y, W, H); }
+    else g.drawImage(it.flat, X, Y, W, H);
+  } else g.drawImage(it.src, X, Y, W, H);
   for (const b of m.bands) piece(it.src, b);
   for (const b of m.hides){ // solid fill in the slip's own background color: no text shape or length shows through
     const sw = b.w * W, sh = b.h * H; if (sw <= 0 || sh <= 0) continue;
@@ -216,7 +234,7 @@ function bgColor(it, b){
 }
 function makeItem(img, name){
   const src = toCanvas(img), p = prof();
-  const it = { id: uid(), name, src, w: src.width, h: src.height, soft: soften(src), blob: null, url: null };
+  const it = { id: uid(), name, src, w: src.width, h: src.height, flat: flatten(src), blob: null, url: null };
   setMarks(it, p || {}); return it;
 }
 
@@ -367,7 +385,7 @@ const COL = { show: "#41c787", hide: "#f06a5f", crop: "#f2c94c" };
 function drawEd(){
   if (!ed || $("ed").hidden && !ed) return; const it = items[ed.i], W = ecv.width, H = ecv.height, dpr = window.devicePixelRatio || 1;
   if (!W) return;
-  paint(eg, it, ed.m, 0, 0, W / it.w);
+  paint(eg, it, ed.m, 0, 0, W / it.w, true);
   const c = ed.m.crop;
   if (c){ // dim outside the crop
     eg.fillStyle = "rgba(5,7,12,0.62)";
