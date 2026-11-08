@@ -73,6 +73,10 @@ button:disabled{opacity:.45}
 .ed .stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 8px}
 #ecv{touch-action:none;display:block;border-radius:6px}
 .ed .tip{width:100%;text-align:center;font-size:14px;color:#a9b2c6;margin:0 0 4px}
+.ed .modes{display:flex;width:100%;max-width:420px;border:1px solid #2c3448;border-radius:12px;overflow:hidden}
+.ed .modes button{flex:1;border:0;border-radius:0;background:#141926}
+.ed .modes button[aria-pressed="true"]{background:#eef1f7;color:#0b1020}
+.ed .modes button+button{border-left:1px solid #2c3448}
 </style>
 </head>
 <body>
@@ -114,6 +118,11 @@ button:disabled{opacity:.45}
   </div>
   <div class="stage" id="stage"><canvas id="ecv" aria-label="Slip. Drag up or down over a row to keep it visible."></canvas></div>
   <div class="bot">
+    <div class="modes" role="group" aria-label="Tool">
+      <button type="button" id="mShow" aria-pressed="true">Show rows</button>
+      <button type="button" id="mHide" aria-pressed="false">Hide</button>
+      <button type="button" id="mCrop" aria-pressed="false">Crop</button>
+    </div>
     <p class="tip" id="edTip">Drag up or down over each row to show it. Tap once for a quick row.</p>
     <button type="button" id="edDel" disabled>Delete row</button>
     <button type="button" id="edClear">Clear</button>
@@ -154,8 +163,12 @@ function rect(b, w, h){
   const x = Math.round(Math.max(0, b.x) * w), y = Math.round(Math.max(0, b.y) * h);
   return { x, y, w: Math.max(0, Math.min(w - x, Math.round(b.w * w))), h: Math.max(0, Math.min(h - y, Math.round(b.h * h))) };
 }
+const marks = o => ({ bands: clone(o.bands || []), hides: clone(o.hides || []), crop: o.crop ? { ...o.crop } : null });
+const hasMarks = o => !!(o.bands.length || o.hides.length || o.crop);
+function setMarks(dst, m){ const c = marks(m); dst.bands = c.bands; dst.hides = c.hides; dst.crop = c.crop; }
 function region(it){
   const w = it.w, h = it.h;
+  if (it.crop){ const q = rect(it.crop, w, h); if (q.w > 2 && q.h > 2) return q; }
   if (!it.bands.length) return { x: 0, y: 0, w, h };
   const pad = Math.round(w * 0.025);
   let t = h, bo = 0, l = w, r = 0;
@@ -169,14 +182,26 @@ function finalBlob(it){
   return new Promise(res => {
     const R = region(it), c = document.createElement("canvas"); c.width = R.w; c.height = R.h;
     const g = c.getContext("2d");
-    g.drawImage(it.soft, R.x, R.y, R.w, R.h, 0, 0, R.w, R.h);
-    for (const b of it.bands){ const q = rect(b, it.w, it.h); if (q.w && q.h) g.drawImage(it.src, q.x, q.y, q.w, q.h, q.x - R.x, q.y - R.y, q.w, q.h); }
+    paint(g, it, it, R.x, R.y, 1);
     c.toBlob(b => res(b), "image/jpeg", 0.92);
   });
 }
+/* Draw marks m of item it onto g. ox/oy = top-left of the output in image px, k = output px per image px.
+   Rows marked -> only rows sharp. No rows but a crop or hide box -> everything sharp. Nothing -> all blurred. Hide boxes blur on top. */
+function paint(g, it, m, ox, oy, k){
+  const W = it.w * k, H = it.h * k, X = -ox * k, Y = -oy * k;
+  g.imageSmoothingQuality = "high";
+  const piece = (srcC, b) => { const sx = b.x * it.w, sy = b.y * it.h, sw = b.w * it.w, sh = b.h * it.h;
+    if (sw > 0 && sh > 0) g.drawImage(srcC, sx, sy, sw, sh, X + b.x * W, Y + b.y * H, b.w * W, b.h * H); };
+  const anyMark = m.bands.length || m.hides.length || m.crop;
+  g.drawImage(m.bands.length || !anyMark ? it.soft : it.src, X, Y, W, H);
+  for (const b of m.bands) piece(it.src, b);
+  for (const b of m.hides) piece(it.soft, b);
+}
 function makeItem(img, name){
   const src = toCanvas(img), p = prof();
-  return { id: uid(), name, src, w: src.width, h: src.height, soft: soften(src), bands: p ? clone(p.bands) : [], blob: null, url: null };
+  const it = { id: uid(), name, src, w: src.width, h: src.height, soft: soften(src), blob: null, url: null };
+  setMarks(it, p || {}); return it;
 }
 
 /* ---------------- sample slip (first open only) ---------------- */
@@ -198,7 +223,8 @@ function sampleSlip(){
   T("Example image, not a real slip", 260, 1450, "500 26px Arial", "#56607a");
   return c;
 }
-const SAMPLE_BANDS = [ { x: 0, y: 305 / 1500, w: 1, h: 290 / 1500 }, { x: 0, y: 690 / 1500, w: 1, h: 45 / 1500 } ];
+const SAMPLE = { bands: [], crop: { x: 40 / 900, y: 280 / 1500, w: 820 / 900, h: 530 / 1500 },
+                 hides: [ { x: 70 / 900, y: 625 / 1500, w: 760 / 900, h: 50 / 1500 }, { x: 70 / 900, y: 745 / 1500, w: 500 / 900, h: 50 / 1500 } ] };
 
 /* ---------------- main screen ---------------- */
 async function refresh(only){
@@ -207,8 +233,8 @@ async function refresh(only){
   items.forEach((it, i) => {
     const b = document.createElement("button"); b.type = "button"; b.className = "res"; b.setAttribute("aria-label", "Edit slip " + (i + 1));
     const im = document.createElement("img"); im.src = it.url; im.alt = "Blurred slip " + (i + 1);
-    const tag = document.createElement("span"); tag.className = "tag" + (it.bands.length ? "" : " warn");
-    tag.textContent = it.sample ? "Example" : (it.bands.length ? "Slip " + (i + 1) : "Tap to mark");
+    const tag = document.createElement("span"); tag.className = "tag" + (hasMarks(it) ? "" : " warn");
+    tag.textContent = it.sample ? "Example" : (hasMarks(it) ? "Slip " + (i + 1) : "Tap to mark");
     b.append(im, tag); b.addEventListener("click", () => openEditor(i)); box.append(b);
   });
   $("empty").hidden = items.length > 0;
@@ -243,16 +269,16 @@ function renderChips(){
 function selectProfile(id){
   store.active = id; persist(); const p = prof();
   items = items.filter(x => !x.sample);
-  items.forEach(it => { it.bands = clone(p.bands); });
+  items.forEach(it => setMarks(it, p));
   renderChips(); refresh();
-  status(p.bands.length ? "Using " + p.name + " rows." : p.name + " isn't set up yet. Add a screenshot, tap it, mark the rows, then tap Use for all " + p.name + " slips.");
+  status(hasMarks(marks(p)) ? "Using " + p.name + " setup." : p.name + " isn't set up yet. Add a screenshot, tap it, mark the rows, then tap Use for all " + p.name + " slips.");
 }
 $("manage").addEventListener("click", () => { managing = !managing; delArm = null; renderChips(); });
 $("newCancel").addEventListener("click", () => { $("newApp").hidden = true; });
 $("newSave").addEventListener("click", () => {
   const name = $("newName").value.trim(); if (!name){ $("newName").focus(); return; }
-  const p = { id: uid(), name, bands: [] }; store.profiles.push(p); store.active = p.id; persist();
-  $("newApp").hidden = true; items = items.filter(x => !x.sample); items.forEach(it => { it.bands = []; });
+  const p = { id: uid(), name, bands: [], hides: [], crop: null }; store.profiles.push(p); store.active = p.id; persist();
+  $("newApp").hidden = true; items = items.filter(x => !x.sample); items.forEach(it => setMarks(it, p));
   renderChips(); refresh();
   status(name + " created. Add one screenshot from " + name + ", tap it, and mark the rows to show.");
 });
@@ -263,7 +289,7 @@ $("file").addEventListener("change", async e => {
   await refresh();
   const p = prof();
   if (!p) status("Tap + New app first so these rows can be remembered.");
-  else if (!p.bands.length) status("Tap a slip and mark the rows to show. Then tap Use for all " + p.name + " slips.");
+  else if (!hasMarks(marks(p))) status("Tap a slip and mark the rows to show. Then tap Use for all " + p.name + " slips.");
   else status("Done. Check them, then Save all.");
 });
 function loadImg(file){
@@ -289,13 +315,26 @@ $("saveAll").addEventListener("click", async () => {
 
 /* ---------------- editor ---------------- */
 const ecv = $("ecv"), eg = ecv.getContext("2d");
-let ed = null;
+let ed = null; // { i, m:{bands,hides,crop}, mode, sel:{t,i}|null, drag }
+const TIPS = {
+  show: ["Drag up or down over each row to show it. Tap once for a quick row.", "Drag over more rows, or tap Done."],
+  hide: ["Drag a box over anything to blur it, like the cost.", "Drag another box, or tap Done."],
+  crop: ["Drag a box around the part of the slip to keep, like the dark card.", "Drag the dots to fit the edges, then tap Done."]
+};
+function shapeList(t){ return t === "crop" ? (ed.m.crop ? [ed.m.crop] : []) : (t === "show" ? ed.m.bands : ed.m.hides); }
+function selShape(){ return ed.sel ? shapeList(ed.sel.t)[ed.sel.i] : null; }
 function openEditor(i){
-  const it = items[i]; ed = { i, bands: clone(it.bands), sel: -1, drag: null };
+  const it = items[i]; ed = { i, m: marks(it), mode: "show", sel: null, drag: null };
+  if (!it.sample && !it.bands.length && (it.crop || it.hides.length)) ed.mode = it.crop ? "crop" : "hide";
   const p = prof(); $("edApp").textContent = p ? p.name : "app"; $("edSaveApp").hidden = !p || !!it.sample;
+  setMode(ed.mode);
   $("ed").hidden = false; document.body.classList.add("lock");
   requestAnimationFrame(() => { sizeCanvas(); drawEd(); });
 }
+function setMode(m){ ed.mode = m; ed.sel = null; ["Show", "Hide", "Crop"].forEach(n => $("m" + n).setAttribute("aria-pressed", m === n.toLowerCase() ? "true" : "false")); drawEd(); }
+$("mShow").addEventListener("click", () => ed && setMode("show"));
+$("mHide").addEventListener("click", () => ed && setMode("hide"));
+$("mCrop").addEventListener("click", () => ed && setMode("crop"));
 function closeEditor(){ $("ed").hidden = true; document.body.classList.remove("lock"); ed = null; }
 function sizeCanvas(){
   const it = items[ed.i], st = $("stage"), aw = st.clientWidth - 16, ah = st.clientHeight - 8;
@@ -308,51 +347,62 @@ function handles(b){
   return [ { k: "t", x: b.x + b.w / 2, y: b.y }, { k: "b", x: b.x + b.w / 2, y: b.y + b.h },
            { k: "l", x: b.x, y: b.y + b.h / 2 }, { k: "r", x: b.x + b.w, y: b.y + b.h / 2 } ];
 }
+const COL = { show: "#41c787", hide: "#f06a5f", crop: "#f2c94c" };
 function drawEd(){
-  if (!ed) return; const it = items[ed.i], W = ecv.width, H = ecv.height, dpr = window.devicePixelRatio || 1;
-  eg.imageSmoothingQuality = "high";
-  eg.drawImage(it.soft, 0, 0, W, H);
-  for (const b of ed.bands){ const sx = b.x * it.w, sy = b.y * it.h, sw = b.w * it.w, sh = b.h * it.h;
-    if (sw > 0 && sh > 0) eg.drawImage(it.src, sx, sy, sw, sh, b.x * W, b.y * H, b.w * W, b.h * H); }
-  ed.bands.forEach((b, i) => {
-    eg.lineWidth = (i === ed.sel ? 3 : 2) * dpr; eg.strokeStyle = i === ed.sel ? "#6d93f2" : "#41c787";
-    eg.setLineDash(i === ed.sel ? [] : [6 * dpr, 4 * dpr]); eg.strokeRect(b.x * W + dpr, b.y * H + dpr, b.w * W - 2 * dpr, b.h * H - 2 * dpr);
-  });
-  eg.setLineDash([]);
-  if (ed.sel >= 0){
-    for (const h of handles(ed.bands[ed.sel])){
-      eg.beginPath(); eg.arc(h.x * W, h.y * H, 10 * dpr, 0, Math.PI * 2); eg.fillStyle = "#6d93f2"; eg.fill();
-      eg.lineWidth = 2 * dpr; eg.strokeStyle = "#ffffff"; eg.stroke();
-    }
+  if (!ed || $("ed").hidden && !ed) return; const it = items[ed.i], W = ecv.width, H = ecv.height, dpr = window.devicePixelRatio || 1;
+  if (!W) return;
+  paint(eg, it, ed.m, 0, 0, W / it.w);
+  const c = ed.m.crop;
+  if (c){ // dim outside the crop
+    eg.fillStyle = "rgba(5,7,12,0.62)";
+    eg.fillRect(0, 0, W, c.y * H); eg.fillRect(0, (c.y + c.h) * H, W, H - (c.y + c.h) * H);
+    eg.fillRect(0, c.y * H, c.x * W, c.h * H); eg.fillRect((c.x + c.w) * W, c.y * H, W - (c.x + c.w) * W, c.h * H);
   }
-  $("edDel").disabled = ed.sel < 0;
-  $("edTip").textContent = ed.bands.length ? (ed.sel >= 0 ? "Drag the dots to resize, drag the row to move it." : "Drag over more rows, or tap Done.")
-                                           : "Drag up or down over each row to show it. Tap once for a quick row.";
+  const outline = (b, t, on) => { eg.lineWidth = (on ? 3 : 2) * dpr; eg.strokeStyle = COL[t];
+    eg.setLineDash(on || t === "crop" ? [] : [6 * dpr, 4 * dpr]); eg.strokeRect(b.x * W + dpr, b.y * H + dpr, b.w * W - 2 * dpr, b.h * H - 2 * dpr); };
+  ed.m.bands.forEach((b, i) => outline(b, "show", ed.sel && ed.sel.t === "show" && ed.sel.i === i));
+  ed.m.hides.forEach((b, i) => outline(b, "hide", ed.sel && ed.sel.t === "hide" && ed.sel.i === i));
+  if (c) outline(c, "crop", ed.sel && ed.sel.t === "crop");
+  eg.setLineDash([]);
+  const s = selShape();
+  if (s){ for (const h of handles(s)){ eg.beginPath(); eg.arc(h.x * W, h.y * H, 10 * dpr, 0, Math.PI * 2);
+    eg.fillStyle = COL[ed.sel.t]; eg.fill(); eg.lineWidth = 2 * dpr; eg.strokeStyle = "#ffffff"; eg.stroke(); } }
+  $("edDel").disabled = !s;
+  $("edDel").textContent = ed.mode === "crop" ? "Remove crop" : ed.mode === "hide" ? "Delete box" : "Delete row";
+  $("edTip").textContent = TIPS[ed.mode][shapeList(ed.mode).length ? 1 : 0];
 }
 function pos(e){ const r = ecv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, cx: e.clientX - r.left, cy: e.clientY - r.top, rw: r.width, rh: r.height }; }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 ecv.addEventListener("pointerdown", e => {
   if (!ed) return; e.preventDefault(); ecv.setPointerCapture(e.pointerId);
-  const p = pos(e);
-  if (ed.sel >= 0){
-    for (const h of handles(ed.bands[ed.sel])){
-      if (Math.hypot(h.x * p.rw - p.cx, h.y * p.rh - p.cy) < 28){ ed.drag = { kind: "h", k: h.k, start: { ...ed.bands[ed.sel] } }; return; }
-    }
-  }
-  for (let i = ed.bands.length - 1; i >= 0; i--){ const b = ed.bands[i];
-    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h){ ed.sel = i; ed.drag = { kind: "move", dx: p.x - b.x, dy: p.y - b.y }; drawEd(); return; } }
-  ed.sel = -1; ed.drag = { kind: "new", y0: p.y, idx: -1 }; drawEd();
+  const p = pos(e), s = selShape();
+  if (s){ for (const h of handles(s)){
+    if (Math.hypot(h.x * p.rw - p.cx, h.y * p.rh - p.cy) < 28){ ed.drag = { kind: "h", k: h.k, start: { ...s } }; return; } } }
+  const list = shapeList(ed.mode);
+  for (let i = list.length - 1; i >= 0; i--){ const b = list[i];
+    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h){ ed.sel = { t: ed.mode, i }; ed.drag = { kind: "move", dx: p.x - b.x, dy: p.y - b.y }; drawEd(); return; } }
+  ed.sel = null; ed.drag = { kind: "new", x0: p.x, y0: p.y, made: false }; drawEd();
 });
 ecv.addEventListener("pointermove", e => {
   if (!ed || !ed.drag) return; const p = pos(e), d = ed.drag;
   if (d.kind === "new"){
-    const y = Math.min(d.y0, p.y), h = Math.abs(p.y - d.y0);
-    if (d.idx < 0 && h > 0.008){ ed.bands.push({ x: 0, y, w: 1, h }); d.idx = ed.bands.length - 1; ed.sel = d.idx; }
-    if (d.idx >= 0){ const b = ed.bands[d.idx]; b.y = clamp(y, 0, 1); b.h = clamp(h, 0, 1 - b.y); }
+    const x = clamp(Math.min(d.x0, p.x), 0, 1), y = clamp(Math.min(d.y0, p.y), 0, 1);
+    const w = Math.min(Math.abs(p.x - d.x0), 1 - x), h = Math.min(Math.abs(p.y - d.y0), 1 - y);
+    if (ed.mode === "show"){
+      if (!d.made && h > 0.008){ ed.m.bands.push({ x: 0, y, w: 1, h }); d.made = true; ed.sel = { t: "show", i: ed.m.bands.length - 1 }; }
+      if (d.made){ const b = ed.m.bands[ed.sel.i]; b.y = y; b.h = h; }
+    } else {
+      if (!d.made && (w > 0.02 && h > 0.006)){
+        if (ed.mode === "crop"){ ed.m.crop = { x, y, w, h }; ed.sel = { t: "crop", i: 0 }; }
+        else { ed.m.hides.push({ x, y, w, h }); ed.sel = { t: "hide", i: ed.m.hides.length - 1 }; }
+        d.made = true;
+      }
+      if (d.made) Object.assign(selShape(), { x, y, w, h });
+    }
   } else if (d.kind === "move"){
-    const b = ed.bands[ed.sel]; b.x = clamp(p.x - d.dx, 0, 1 - b.w); b.y = clamp(p.y - d.dy, 0, 1 - b.h);
+    const b = selShape(); b.x = clamp(p.x - d.dx, 0, 1 - b.w); b.y = clamp(p.y - d.dy, 0, 1 - b.h);
   } else {
-    const b = ed.bands[ed.sel], s = d.start, m = 0.01;
+    const b = selShape(), s = d.start, m = 0.01;
     if (d.k === "t"){ const y = clamp(p.y, 0, s.y + s.h - m); b.y = y; b.h = s.y + s.h - y; }
     if (d.k === "b"){ b.h = clamp(p.y, s.y + m, 1) - s.y; }
     if (d.k === "l"){ const x = clamp(p.x, 0, s.x + s.w - m); b.x = x; b.w = s.x + s.w - x; }
@@ -362,25 +412,33 @@ ecv.addEventListener("pointermove", e => {
 });
 function endEd(e){
   if (!ed || !ed.drag) return; const d = ed.drag; ed.drag = null;
-  if (d.kind === "new" && d.idx < 0){ const p = pos(e), h = 0.045; ed.bands.push({ x: 0, y: clamp(p.y - h / 2, 0, 1 - h), w: 1, h }); ed.sel = ed.bands.length - 1; }
+  if (d.kind === "new" && !d.made){
+    const p = pos(e);
+    if (ed.mode === "show"){ const h = 0.045; ed.m.bands.push({ x: 0, y: clamp(p.y - h / 2, 0, 1 - h), w: 1, h }); ed.sel = { t: "show", i: ed.m.bands.length - 1 }; }
+    else if (ed.mode === "hide"){ const w = 0.3, h = 0.035; ed.m.hides.push({ x: clamp(p.x - w / 2, 0, 1 - w), y: clamp(p.y - h / 2, 0, 1 - h), w, h }); ed.sel = { t: "hide", i: ed.m.hides.length - 1 }; }
+  }
   drawEd();
 }
 ecv.addEventListener("pointerup", endEd); ecv.addEventListener("pointercancel", endEd);
-$("edDel").addEventListener("click", () => { if (ed && ed.sel >= 0){ ed.bands.splice(ed.sel, 1); ed.sel = -1; drawEd(); } });
-$("edClear").addEventListener("click", () => { if (ed){ ed.bands = []; ed.sel = -1; drawEd(); } });
+$("edDel").addEventListener("click", () => {
+  if (!ed || !ed.sel) return;
+  if (ed.sel.t === "crop") ed.m.crop = null; else shapeList(ed.sel.t).splice(ed.sel.i, 1);
+  ed.sel = null; drawEd();
+});
+$("edClear").addEventListener("click", () => { if (ed){ ed.m = { bands: [], hides: [], crop: null }; ed.sel = null; drawEd(); } });
 $("edCancel").addEventListener("click", closeEditor);
-$("edDone").addEventListener("click", () => { const it = items[ed.i]; it.bands = clone(ed.bands); closeEditor(); refresh(it); status(""); });
+$("edDone").addEventListener("click", () => { const it = items[ed.i]; setMarks(it, ed.m); closeEditor(); refresh(it); status(""); });
 $("edSaveApp").addEventListener("click", () => {
   const p = prof(); if (!p || !ed) return;
-  p.bands = clone(ed.bands); persist();
-  items.forEach(it => { if (!it.sample) it.bands = clone(p.bands); });
+  setMarks(p, ed.m); persist();
+  items.forEach(it => { if (!it.sample) setMarks(it, p); });
   closeEditor(); refresh(); status("Saved. New " + p.name + " screenshots will come out like this automatically.");
 });
 
 /* ---------------- start ---------------- */
 load(); renderChips();
 if (!store.profiles.length){
-  const s = makeItem(sampleSlip(), "sample"); s.sample = true; s.bands = clone(SAMPLE_BANDS); items = [s];
+  const s = makeItem(sampleSlip(), "sample"); s.sample = true; setMarks(s, SAMPLE); items = [s];
   status("This is an example. Tap + New app to set up your first app.");
 }
 refresh();
