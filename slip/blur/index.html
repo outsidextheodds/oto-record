@@ -196,7 +196,23 @@ function paint(g, it, m, ox, oy, k){
   const anyMark = m.bands.length || m.hides.length || m.crop;
   g.drawImage(m.bands.length || !anyMark ? it.soft : it.src, X, Y, W, H);
   for (const b of m.bands) piece(it.src, b);
-  for (const b of m.hides) piece(it.soft, b);
+  for (const b of m.hides){ // solid fill in the slip's own background color: no text shape or length shows through
+    const sw = b.w * W, sh = b.h * H; if (sw <= 0 || sh <= 0) continue;
+    g.fillStyle = bgColor(it, b); g.fillRect(X + b.x * W, Y + b.y * H, sw, sh);
+  }
+}
+/* Median color of the pixels just around a box's border = the background behind the hidden text. */
+function bgColor(it, b){
+  const q = rect(b, it.w, it.h); if (!q.w || !q.h) return "#000";
+  const g = it.src.getContext("2d"), pad = 3, rs = [], gs = [], bs = [];
+  const take = (x, y, w, h) => { x = Math.max(0, Math.min(it.w - 1, x)); y = Math.max(0, Math.min(it.h - 1, y));
+    w = Math.max(1, Math.min(it.w - x, w)); h = Math.max(1, Math.min(it.h - y, h));
+    const d = g.getImageData(x, y, w, h).data, step = Math.max(4, Math.floor(d.length / 4 / 200) * 4);
+    for (let i = 0; i < d.length; i += step){ rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]); } };
+  take(q.x, q.y - pad, q.w, 2); take(q.x, q.y + q.h + pad - 2, q.w, 2);
+  take(q.x - pad, q.y, 2, q.h); take(q.x + q.w + pad - 2, q.y, 2, q.h);
+  const med = a => { a.sort((x, y) => x - y); return a[Math.floor(a.length / 2)] || 0; };
+  return "rgb(" + med(rs) + "," + med(gs) + "," + med(bs) + ")";
 }
 function makeItem(img, name){
   const src = toCanvas(img), p = prof();
