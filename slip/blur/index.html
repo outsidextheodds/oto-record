@@ -11,386 +11,379 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <title>Slip Blur</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
-:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-img{max-width:100%}[hidden]{display:none!important}
-/* Layout: one narrow working column (phone first): app chips, the slip editor, then finished slips to save. */
+/* Layout: phone-first single column; full-screen editor overlay for marking rows. */
 :root{
   --bg:#f3f4f7; --panel:#ffffff; --line:#d8dbe4; --fg:#151a26; --muted:#5d6577;
-  --accent:#2a5bd7; --accent-fg:#ffffff; --keep:#1f9d63; --hide:#d2453b; --soft:#e8ecf6;
+  --accent:#2a5bd7; --accent-fg:#ffffff; --keep:#1f9d63; --warn:#b5651d; --soft:#e8ecf6;
   --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  padding-top:env(safe-area-inset-top,0px);
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+@media (prefers-color-scheme: dark){:root{
   --bg:#0f131c; --panel:#171c28; --line:#2a3142; --fg:#e8ebf2; --muted:#98a1b5;
-  --accent:#6d93f2; --accent-fg:#0b1020; --keep:#41c787; --hide:#f06a5f; --soft:#1f2636; color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#0f131c; --panel:#171c28; --line:#2a3142; --fg:#e8ebf2; --muted:#98a1b5;
-  --accent:#6d93f2; --accent-fg:#0b1020; --keep:#41c787; --hide:#f06a5f; --soft:#1f2636; color-scheme:dark}
+  --accent:#6d93f2; --accent-fg:#0b1020; --keep:#41c787; --warn:#e9a25e; --soft:#1f2636; color-scheme:dark}}
 *{box-sizing:border-box}
-body{margin:0;-webkit-text-size-adjust:100%;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;
-  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
-.wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
-header h1{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.01em;margin:0;text-wrap:balance}
-header p{margin:4px 0 0;color:var(--muted);max-width:60ch}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:14px calc(96px + env(safe-area-inset-bottom,0px))}
+body.lock{overflow:hidden}
+.wrap{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--display);font-weight:700;font-size:26px;margin:0}
+.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
 .label{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 section{display:flex;flex-direction:column;gap:10px}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-button,.filebtn{font:600 15px/1 var(--body);border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);
-  padding:11px 14px;cursor:pointer;min-height:44px;display:inline-flex;align-items:center;gap:6px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.between{justify-content:space-between}
+button,.filebtn{font:600 16px/1 var(--body);border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+  padding:12px 16px;cursor:pointer;min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:6px;-webkit-tap-highlight-color:transparent}
 button:focus-visible,.filebtn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
-button.primary,.filebtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
-button.danger{color:var(--hide)}
-button:disabled{opacity:.45;cursor:default}
-.filebtn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.filebtn{position:relative}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.newapp{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
-.newapp input[type=text]{font:500 16px var(--body);padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
-.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;width:fit-content}
-.seg button{border:0;border-radius:0;min-height:40px}
-.mode-note{color:var(--muted);font-size:14px;margin:0}
-.editor{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:10px}
-.stage{position:relative;background:var(--soft);border-radius:8px;overflow:hidden;display:flex;justify-content:center}
-#cv{display:block;max-width:100%;max-height:68vh;width:auto;height:auto;touch-action:none;cursor:crosshair}
-.hint{font-size:14px;color:var(--muted);margin:0}
-.strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
-.strip button{padding:0;border-radius:8px;overflow:hidden;min-height:0;flex:0 0 auto;border:2px solid transparent;background:var(--soft)}
-.strip button[aria-current="true"]{border-color:var(--accent)}
-.strip img{display:block;height:84px;width:auto}
-.results{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
-.res{display:flex;flex-direction:column;gap:6px}
-.res img{width:100%;border-radius:8px;border:1px solid var(--line);background:var(--soft)}
-.res button{justify-content:center}
-.status{font:500 13px var(--mono);color:var(--muted);min-height:1.2em}
-.pill{font:600 12px var(--display);letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid currentColor}
-.pill.keep{color:var(--keep)} .pill.hide{color:var(--hide)}
-.sample{font:500 12px var(--mono);color:var(--muted)}
-footer{color:var(--muted);font-size:13px}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.primary{background:var(--accent)!important;border-color:var(--accent)!important;color:var(--accent-fg)!important}
+.ghost{background:transparent;border-color:transparent;color:var(--muted);padding-inline:8px}
+.danger{color:#d2453b}
+button:disabled{opacity:.45}
+.filebtn{position:relative;width:100%;min-height:58px;font-size:18px}
+.filebtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.card input[type=text]{font:500 17px var(--body);padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.res{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--soft);padding:0;min-height:0;display:block}
+.res img{display:block;width:100%;height:auto}
+.res .tag{position:absolute;left:8px;bottom:8px;font:600 12px var(--display);letter-spacing:.06em;text-transform:uppercase;
+  background:rgba(10,14,22,.72);color:#fff;padding:4px 8px;border-radius:999px}
+.res .tag.warn{background:var(--warn)}
+.empty{color:var(--muted);font-size:15px;margin:0}
+.status{font-size:14px;color:var(--muted);min-height:1.3em;margin:0}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.bar .in{max-width:620px;margin:0 auto}
+.bar button{width:100%;min-height:54px;font-size:18px}
+/* editor */
+.ed{position:fixed;inset:0;background:#0b0e15;color:#eef1f7;display:flex;flex-direction:column;z-index:20}
+.ed .top,.ed .bot{display:flex;align-items:center;gap:8px;padding:10px max(12px,env(safe-area-inset-left,0px)) 10px max(12px,env(safe-area-inset-right,0px))}
+.ed .top{padding-top:calc(10px + env(safe-area-inset-top,0px));justify-content:space-between}
+.ed .bot{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));flex-wrap:wrap;justify-content:center}
+.ed .top b{font-family:var(--display);font-size:17px;letter-spacing:.02em}
+.ed button{background:#1d2333;border-color:#2c3448;color:#eef1f7;min-height:44px;font-size:15px;padding:10px 13px}
+.ed button.primary{background:#6d93f2!important;border-color:#6d93f2!important;color:#0b1020!important}
+.ed .stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 8px}
+#ecv{touch-action:none;display:block;border-radius:6px}
+.ed .tip{width:100%;text-align:center;font-size:14px;color:#a9b2c6;margin:0 0 4px}
 </style>
 </head>
 <body>
-
 <div class="wrap">
   <header>
-    <h1>OTO Slip Blur</h1>
-    <p>Mark the spots once per app. After that, every screenshot from that app comes out blurred and ready to post. Images stay on this device and never upload.</p>
+    <h1>Slip Blur</h1>
+    <p class="sub">Pick the app, add screenshots, save. Everything stays on this phone.</p>
   </header>
 
-  <section aria-labelledby="apps-h">
-    <div class="row" style="justify-content:space-between">
-      <span class="label" id="apps-h">App</span>
-      <span id="modePill" class="pill keep">Keep mode</span>
-    </div>
-    <div class="chips" id="chips"></div>
-    <div class="newapp" id="newApp" hidden>
-      <label class="label" for="newName">App name</label>
-      <input type="text" id="newName" placeholder="e.g. Polymarket, Book A" maxlength="30">
-      <div class="seg" role="group" aria-label="Mode">
-        <button type="button" id="nmKeep" aria-pressed="true">Keep only boxes</button>
-        <button type="button" id="nmHide" aria-pressed="false">Hide boxes</button>
-      </div>
-      <p class="mode-note">Keep only boxes: everything is blurred except what you box (game, side, odds). Safest, since a new balance or name anywhere still gets hidden.</p>
-      <div class="row"><button type="button" class="primary" id="newSave">Create app</button><button type="button" id="newCancel">Cancel</button></div>
+  <section aria-labelledby="app-h">
+    <div class="row between"><span class="label" id="app-h">App</span>
+      <button type="button" class="ghost" id="manage">Manage</button></div>
+    <div class="row" id="chips"></div>
+    <div class="card" id="newApp" hidden>
+      <label class="label" for="newName">New app name</label>
+      <input type="text" id="newName" placeholder="Polymarket" maxlength="24" autocomplete="off">
+      <div class="row"><button type="button" class="primary" id="newSave">Create</button><button type="button" id="newCancel">Cancel</button></div>
     </div>
   </section>
 
-  <section aria-labelledby="ed-h">
-    <div class="row" style="justify-content:space-between">
-      <span class="label" id="ed-h">Screenshots</span>
-      <label class="filebtn primary" for="file">Add screenshots<input type="file" id="file" accept="image/*" multiple></label>
-    </div>
-    <div class="editor">
-      <div class="stage"><canvas id="cv" aria-label="Slip preview. Drag to draw a box."></canvas></div>
-      <p class="hint" id="hint">Drag on the slip to draw a box. Tap a box to select it, drag it to move it.</p>
-      <div class="row">
-        <button type="button" id="delBox" disabled>Delete box</button>
-        <button type="button" id="clearBoxes">Clear boxes</button>
-        <button type="button" id="saveTpl">Save boxes to this app</button>
-        <button type="button" class="danger" id="removeImg">Remove image</button>
-      </div>
-      <div class="strip" id="strip" aria-label="Loaded screenshots"></div>
-      <div class="status" id="status" role="status"></div>
-    </div>
-  </section>
+  <label class="filebtn primary" for="file">Add screenshots<input type="file" id="file" accept="image/*" multiple></label>
 
   <section aria-labelledby="res-h">
-    <div class="row" style="justify-content:space-between">
-      <span class="label" id="res-h">Ready to post</span>
-      <button type="button" class="primary" id="saveAll">Save all</button>
-    </div>
-    <p class="hint" id="saveHint">Save opens your phone's share sheet, so you can send a slip straight to Discord or save it to Photos. You can also press and hold an image below.</p>
+    <div class="row between"><span class="label" id="res-h">Ready to post</span><span class="sub" id="count"></span></div>
+    <p class="status" id="status" role="status"></p>
     <div class="results" id="results"></div>
+    <p class="empty" id="empty" hidden>No screenshots yet. Tap Add screenshots.</p>
+    <p class="sub">Tap a slip to change what shows. Press and hold a slip to save just that one.</p>
   </section>
+</div>
 
-  <footer>Tip: in Keep mode, box the time placed too if the slip shows one, so the timestamp stays visible.</footer>
+<div class="bar"><div class="in"><button type="button" class="primary" id="saveAll">Save all</button></div></div>
+
+<div class="ed" id="ed" hidden>
+  <div class="top">
+    <button type="button" id="edCancel">Cancel</button>
+    <b id="edTitle">Mark what to show</b>
+    <button type="button" class="primary" id="edDone">Done</button>
+  </div>
+  <div class="stage" id="stage"><canvas id="ecv" aria-label="Slip. Drag up or down over a row to keep it visible."></canvas></div>
+  <div class="bot">
+    <p class="tip" id="edTip">Drag up or down over each row to show it. Tap once for a quick row.</p>
+    <button type="button" id="edDel" disabled>Delete row</button>
+    <button type="button" id="edClear">Clear</button>
+    <button type="button" id="edSaveApp">Use for all <span id="edApp">app</span> slips</button>
+  </div>
 </div>
 
 <script>
 (() => {
-const KEY = "oto-slip-blur-v1";
+const KEY = "oto-slip-blur-v2";
 const $ = id => document.getElementById(id);
-const cv = $("cv"), ctx = cv.getContext("2d");
 let store = { profiles: [], active: null };
-let items = [], cur = -1, sel = -1, drag = null, newMode = "keep", delArm = null;
-
+let items = [], managing = false, delArm = null;
+const uid = () => Math.random().toString(36).slice(2, 9);
+const clone = a => a.map(b => ({ ...b }));
+const status = t => { $("status").textContent = t || ""; };
 function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && Array.isArray(s.profiles)) store = s; }catch(e){} }
 function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
 const prof = () => store.profiles.find(p => p.id === store.active) || null;
-const uid = () => Math.random().toString(36).slice(2, 9);
-const status = t => { $("status").textContent = t || ""; };
 
-/* ---------- sample slip so the tool shows its job on first open ---------- */
-function sampleSlip(){
-  const c = document.createElement("canvas"); c.width = 900; c.height = 1400;
-  const g = c.getContext("2d");
-  g.fillStyle = "#101521"; g.fillRect(0,0,900,1400);
-  g.fillStyle = "#e9edf5"; g.font = "600 34px Arial"; g.fillText("9:41", 40, 60);
-  g.font = "700 30px Arial"; g.fillText("SAMPLE APP", 600, 60);
-  g.fillStyle = "#1b2233"; roundRect(g, 40, 110, 820, 120, 18); g.fill();
-  g.fillStyle = "#9aa4ba"; g.font = "500 28px Arial"; g.fillText("Balance", 70, 160);
-  g.fillStyle = "#ffffff"; g.font = "700 44px Arial"; g.fillText("$1,240.55", 70, 210);
-  g.fillStyle = "#9aa4ba"; g.font = "500 28px Arial"; g.fillText("@knox_example", 560, 185);
-  g.fillStyle = "#1b2233"; roundRect(g, 40, 280, 820, 640, 22); g.fill();
-  g.fillStyle = "#9aa4ba"; g.font = "500 28px Arial"; g.fillText("NHL · Tonight 7:00 PM", 80, 345);
-  g.fillStyle = "#ffffff"; g.font = "700 50px Arial"; g.fillText("Flames @ Oilers", 80, 420);
-  g.fillStyle = "#3ccf8e"; g.font = "700 40px Arial"; g.fillText("YES · Flames win", 80, 500);
-  g.fillStyle = "#ffffff"; g.font = "600 38px Arial"; g.fillText("Odds +135  ·  42¢", 80, 570);
-  g.fillStyle = "#9aa4ba"; g.font = "500 30px Arial"; g.fillText("Cost $250.00   To win $337.50", 80, 660);
-  g.fillText("Placed Nov 8, 10:04 AM", 80, 720);
-  g.fillText("Ticket #A93-551-2207", 80, 780);
-  g.fillStyle = "#2a5bd7"; roundRect(g, 80, 820, 740, 70, 14); g.fill();
-  g.fillStyle = "#fff"; g.font = "700 30px Arial"; g.fillText("Share slip", 370, 866);
-  g.fillStyle = "#56607a"; g.font = "500 26px Arial"; g.fillText("Example image, not a real slip", 260, 1360);
-  return c;
+/* ---------------- image work ---------------- */
+function toCanvas(img){
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0); return c;
 }
-function roundRect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
-const SAMPLE_BOXES = [ {x:80/900,y:300/1400,w:640/900,h:140/1400}, {x:70/900,y:455/1400,w:600/900,h:135/1400}, {x:70/900,y:690/1400,w:520/900,h:45/1400} ];
-
-/* ---------- image processing ---------- */
-function pixelated(src){
-  const w = src.width, h = src.height, bs = Math.max(16, Math.round(w / 24));
-  const s = document.createElement("canvas"); s.width = Math.max(1, Math.ceil(w / bs)); s.height = Math.max(1, Math.ceil(h / bs));
-  const sg = s.getContext("2d"); sg.imageSmoothingEnabled = true; sg.drawImage(src, 0, 0, s.width, s.height);
-  const p = document.createElement("canvas"); p.width = w; p.height = h;
-  const pg = p.getContext("2d"); pg.imageSmoothingEnabled = false; pg.drawImage(s, 0, 0, w, h);
-  pg.fillStyle = "rgba(12,16,26,0.55)"; pg.fillRect(0, 0, w, h);
-  return p;
+function soften(src){
+  const w = src.width, h = src.height;
+  const mid = document.createElement("canvas"); mid.width = Math.max(1, Math.round(w / 8)); mid.height = Math.max(1, Math.round(h / 8));
+  const mg = mid.getContext("2d"); mg.imageSmoothingQuality = "high"; mg.drawImage(src, 0, 0, mid.width, mid.height);
+  const sm = document.createElement("canvas"); sm.width = Math.max(1, Math.round(w / 45)); sm.height = Math.max(1, Math.round(h / 45));
+  const sg = sm.getContext("2d"); sg.imageSmoothingQuality = "high"; sg.drawImage(mid, 0, 0, sm.width, sm.height);
+  const out = document.createElement("canvas"); out.width = w; out.height = h;
+  const og = out.getContext("2d"); og.imageSmoothingEnabled = true; og.imageSmoothingQuality = "high"; og.drawImage(sm, 0, 0, w, h);
+  og.fillStyle = "rgba(20,24,34,0.18)"; og.fillRect(0, 0, w, h);
+  return out;
 }
-function render(item, g, full){
-  const w = item.w, h = item.h, src = item.src, pix = item.pix;
-  if (item.mode === "keep"){
-    g.drawImage(pix, 0, 0);
-    for (const b of item.boxes){ const r = px(b, w, h); if (r.w > 0 && r.h > 0) g.drawImage(src, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); }
-  } else {
-    g.drawImage(src, 0, 0);
-    for (const b of item.boxes){ const r = px(b, w, h); if (r.w > 0 && r.h > 0) g.drawImage(pix, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); }
-  }
-  if (!full){
-    const lw = Math.max(2, Math.round(w / 260));
-    item.boxes.forEach((b, i) => {
-      const r = px(b, w, h);
-      g.lineWidth = i === sel ? lw * 2 : lw;
-      g.setLineDash(i === sel ? [] : [lw * 4, lw * 3]);
-      g.strokeStyle = item.mode === "keep" ? css("--keep") : css("--hide");
-      g.strokeRect(r.x + lw/2, r.y + lw/2, r.w - lw, r.h - lw);
-    });
-    g.setLineDash([]);
-  }
-}
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || "#2a5bd7";
-function px(b, w, h){
+function rect(b, w, h){
   const x = Math.round(Math.max(0, b.x) * w), y = Math.round(Math.max(0, b.y) * h);
-  return { x, y, w: Math.min(w - x, Math.round(b.w * w)), h: Math.min(h - y, Math.round(b.h * h)) };
+  return { x, y, w: Math.max(0, Math.min(w - x, Math.round(b.w * w))), h: Math.max(0, Math.min(h - y, Math.round(b.h * h))) };
 }
-function makeItem(name, srcCanvasOrImg){
-  const w = srcCanvasOrImg.naturalWidth || srcCanvasOrImg.width, h = srcCanvasOrImg.naturalHeight || srcCanvasOrImg.height;
-  const src = document.createElement("canvas"); src.width = w; src.height = h; src.getContext("2d").drawImage(srcCanvasOrImg, 0, 0);
-  const p = prof();
-  return { id: uid(), name, w, h, src, pix: pixelated(src), mode: p ? p.mode : "keep",
-           boxes: p ? clone(p.boxes) : [], url: null };
+function region(it){
+  const w = it.w, h = it.h;
+  if (!it.bands.length) return { x: 0, y: 0, w, h };
+  const pad = Math.round(w * 0.025);
+  let t = h, bo = 0, l = w, r = 0;
+  for (const b of it.bands){ const q = rect(b, w, h); t = Math.min(t, q.y); bo = Math.max(bo, q.y + q.h); l = Math.min(l, q.x); r = Math.max(r, q.x + q.w); }
+  const full = it.bands.every(b => b.x <= 0.001 && b.w >= 0.998);
+  const x0 = full ? 0 : Math.max(0, l - pad), x1 = full ? w : Math.min(w, r + pad);
+  const y0 = Math.max(0, t - pad), y1 = Math.min(h, bo + pad);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
-const clone = a => a.map(b => ({ ...b }));
-
-/* ---------- drawing ---------- */
-function draw(){
-  const it = items[cur];
-  if (!it){ cv.width = 600; cv.height = 300; ctx.fillStyle = css("--soft"); ctx.fillRect(0,0,600,300);
-    ctx.fillStyle = css("--muted"); ctx.font = "500 22px Arial"; ctx.fillText("Add screenshots to start", 180, 155); return; }
-  if (cv.width !== it.w || cv.height !== it.h){ cv.width = it.w; cv.height = it.h; }
-  render(it, ctx, false);
-  $("delBox").disabled = sel < 0;
-}
-let outTimer = null;
-function scheduleOut(){ clearTimeout(outTimer); outTimer = setTimeout(buildResults, 250); }
 function finalBlob(it){
-  return new Promise(res => { const c = document.createElement("canvas"); c.width = it.w; c.height = it.h;
-    render(it, c.getContext("2d"), true); c.toBlob(b => res(b), "image/png"); });
-}
-async function buildResults(){
-  const box = $("results"); box.textContent = "";
-  for (let i = 0; i < items.length; i++){
-    const it = items[i]; const blob = await finalBlob(it);
-    if (it.url) URL.revokeObjectURL(it.url); it.url = URL.createObjectURL(blob); it.blob = blob;
-    const d = document.createElement("div"); d.className = "res";
-    const im = document.createElement("img"); im.src = it.url; im.alt = "Blurred slip " + (i + 1);
-    const b = document.createElement("button"); b.type = "button"; b.textContent = "Save";
-    b.addEventListener("click", () => saveOne(it, i));
-    d.append(im, b); box.append(d);
-  }
-  renderStrip();
-  $("saveAll").disabled = !items.length;
-}
-function renderStrip(){
-  const s = $("strip"); s.textContent = "";
-  items.forEach((it, i) => {
-    const b = document.createElement("button"); b.type = "button"; b.setAttribute("aria-current", i === cur ? "true" : "false");
-    b.setAttribute("aria-label", "Edit screenshot " + (i + 1));
-    const im = document.createElement("img"); im.src = it.url || ""; im.alt = "";
-    b.append(im); b.addEventListener("click", () => { cur = i; sel = -1; draw(); renderStrip(); }); s.append(b);
+  return new Promise(res => {
+    const R = region(it), c = document.createElement("canvas"); c.width = R.w; c.height = R.h;
+    const g = c.getContext("2d");
+    g.drawImage(it.soft, R.x, R.y, R.w, R.h, 0, 0, R.w, R.h);
+    for (const b of it.bands){ const q = rect(b, it.w, it.h); if (q.w && q.h) g.drawImage(it.src, q.x, q.y, q.w, q.h, q.x - R.x, q.y - R.y, q.w, q.h); }
+    c.toBlob(b => res(b), "image/jpeg", 0.92);
   });
 }
-
-/* ---------- pointer editing ---------- */
-function toFrac(e){
-  const r = cv.getBoundingClientRect();
-  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+function makeItem(img, name){
+  const src = toCanvas(img), p = prof();
+  return { id: uid(), name, src, w: src.width, h: src.height, soft: soften(src), bands: p ? clone(p.bands) : [], blob: null, url: null };
 }
-function hit(p){
-  const it = items[cur]; if (!it) return -1;
-  for (let i = it.boxes.length - 1; i >= 0; i--){ const b = it.boxes[i];
-    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return i; }
-  return -1;
+
+/* ---------------- sample slip (first open only) ---------------- */
+function sampleSlip(){
+  const c = document.createElement("canvas"); c.width = 900; c.height = 1500; const g = c.getContext("2d");
+  g.fillStyle = "#101521"; g.fillRect(0, 0, 900, 1500);
+  const T = (t, x, y, f, col) => { g.font = f; g.fillStyle = col; g.fillText(t, x, y); };
+  T("9:41", 40, 60, "600 32px Arial", "#e9edf5"); T("SAMPLE APP", 610, 60, "700 28px Arial", "#e9edf5");
+  g.fillStyle = "#1b2233"; g.fillRect(40, 100, 820, 130);
+  T("Balance", 70, 150, "500 28px Arial", "#9aa4ba"); T("$1,240.55", 70, 205, "700 44px Arial", "#fff"); T("@knox_example", 560, 180, "500 28px Arial", "#9aa4ba");
+  g.fillStyle = "#1b2233"; g.fillRect(40, 280, 820, 640);
+  T("NHL · Tonight 7:00 PM", 80, 345, "500 28px Arial", "#9aa4ba");
+  T("Flames @ Oilers", 80, 420, "700 50px Arial", "#fff");
+  T("YES · Flames win", 80, 500, "700 40px Arial", "#3ccf8e");
+  T("Odds +135  ·  42¢", 80, 570, "600 38px Arial", "#fff");
+  T("Cost $250.00   To win $337.50", 80, 660, "500 30px Arial", "#9aa4ba");
+  T("Placed Nov 8, 10:04 AM", 80, 720, "500 30px Arial", "#9aa4ba");
+  T("Ticket #A93-551-2207", 80, 780, "500 30px Arial", "#9aa4ba");
+  T("Example image, not a real slip", 260, 1450, "500 26px Arial", "#56607a");
+  return c;
 }
-cv.addEventListener("pointerdown", e => {
-  const it = items[cur]; if (!it) return;
-  cv.setPointerCapture(e.pointerId);
-  const p = toFrac(e), h = hit(p);
-  if (h >= 0){ sel = h; const b = it.boxes[h]; drag = { kind: "move", dx: p.x - b.x, dy: p.y - b.y, moved: false }; }
-  else { sel = -1; drag = { kind: "new", x0: p.x, y0: p.y, idx: -1 }; }
-  draw();
-});
-cv.addEventListener("pointermove", e => {
-  if (!drag) return; const it = items[cur]; const p = toFrac(e);
-  if (drag.kind === "move"){ const b = it.boxes[sel];
-    b.x = Math.min(Math.max(0, p.x - drag.dx), 1 - b.w); b.y = Math.min(Math.max(0, p.y - drag.dy), 1 - b.h); drag.moved = true; }
-  else {
-    const x = Math.min(drag.x0, p.x), y = Math.min(drag.y0, p.y), w = Math.abs(p.x - drag.x0), h = Math.abs(p.y - drag.y0);
-    if (drag.idx < 0 && (w > 0.02 || h > 0.01)){ it.boxes.push({ x, y, w, h }); drag.idx = it.boxes.length - 1; sel = drag.idx; }
-    if (drag.idx >= 0) Object.assign(it.boxes[drag.idx], { x: Math.max(0, x), y: Math.max(0, y), w: Math.min(w, 1 - Math.max(0, x)), h: Math.min(h, 1 - Math.max(0, y)) });
-  }
-  draw();
-});
-const endDrag = () => { if (drag){ drag = null; draw(); scheduleOut(); } };
-cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", endDrag);
+const SAMPLE_BANDS = [ { x: 0, y: 305 / 1500, w: 1, h: 290 / 1500 }, { x: 0, y: 690 / 1500, w: 1, h: 45 / 1500 } ];
 
-$("delBox").addEventListener("click", () => { const it = items[cur]; if (!it || sel < 0) return; it.boxes.splice(sel, 1); sel = -1; draw(); scheduleOut(); });
-$("clearBoxes").addEventListener("click", () => { const it = items[cur]; if (!it) return; it.boxes = []; sel = -1; draw(); scheduleOut(); });
-$("removeImg").addEventListener("click", () => { if (cur < 0) return; const it = items.splice(cur, 1)[0]; if (it && it.url) URL.revokeObjectURL(it.url);
-  cur = Math.min(cur, items.length - 1); sel = -1; draw(); buildResults(); status(""); });
-$("saveTpl").addEventListener("click", () => {
-  const it = items[cur], p = prof(); if (!it) return;
-  if (!p){ status("Create an app first, then save boxes to it."); openNew(); return; }
-  p.boxes = clone(it.boxes); p.mode = it.mode; persist(); status("Saved " + it.boxes.length + " box(es) to " + p.name + ".");
-});
-
-/* ---------- apps (profiles) ---------- */
+/* ---------------- main screen ---------------- */
+async function refresh(only){
+  for (const it of items){ if (only && it !== only) continue; const b = await finalBlob(it); if (it.url) URL.revokeObjectURL(it.url); it.blob = b; it.url = URL.createObjectURL(b); }
+  const box = $("results"); box.textContent = "";
+  items.forEach((it, i) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "res"; b.setAttribute("aria-label", "Edit slip " + (i + 1));
+    const im = document.createElement("img"); im.src = it.url; im.alt = "Blurred slip " + (i + 1);
+    const tag = document.createElement("span"); tag.className = "tag" + (it.bands.length ? "" : " warn");
+    tag.textContent = it.sample ? "Example" : (it.bands.length ? "Slip " + (i + 1) : "Tap to mark");
+    b.append(im, tag); b.addEventListener("click", () => openEditor(i)); box.append(b);
+  });
+  $("empty").hidden = items.length > 0;
+  const real = items.filter(x => !x.sample).length;
+  $("count").textContent = real ? real + (real === 1 ? " slip" : " slips") : "";
+  $("saveAll").disabled = !real;
+  $("saveAll").textContent = real ? "Save all " + real : "Save all";
+}
 function renderChips(){
   const c = $("chips"); c.textContent = "";
   store.profiles.forEach(p => {
     const b = document.createElement("button"); b.type = "button"; b.textContent = p.name;
     b.setAttribute("aria-pressed", p.id === store.active ? "true" : "false");
     b.addEventListener("click", () => selectProfile(p.id)); c.append(b);
+    if (managing){
+      const d = document.createElement("button"); d.type = "button"; d.className = "danger";
+      d.textContent = delArm === p.id ? "Tap again to delete" : "Delete " + p.name;
+      d.addEventListener("click", () => {
+        if (delArm !== p.id){ delArm = p.id; renderChips(); return; }
+        store.profiles = store.profiles.filter(x => x.id !== p.id);
+        if (store.active === p.id) store.active = store.profiles[0] ? store.profiles[0].id : null;
+        delArm = null; persist(); renderChips();
+      });
+      c.append(d);
+    }
   });
-  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ New app"; add.addEventListener("click", openNew); c.append(add);
-  const p = prof();
-  if (p){
-    const del = document.createElement("button"); del.type = "button"; del.className = "danger";
-    del.textContent = delArm === p.id ? "Tap again to delete " + p.name : "Delete app";
-    del.addEventListener("click", () => {
-      if (delArm !== p.id){ delArm = p.id; renderChips(); setTimeout(() => { if (delArm === p.id){ delArm = null; renderChips(); } }, 4000); return; }
-      store.profiles = store.profiles.filter(x => x.id !== p.id); store.active = store.profiles[0] ? store.profiles[0].id : null; delArm = null; persist(); renderChips();
-    });
-    c.append(del);
-  }
-  const mode = p ? p.mode : (items[cur] ? items[cur].mode : "keep");
-  const pill = $("modePill"); pill.className = "pill " + mode; pill.textContent = mode === "keep" ? "Keep mode" : "Hide mode";
+  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ New app";
+  add.addEventListener("click", () => { $("newApp").hidden = false; $("newName").value = ""; $("newName").focus(); }); c.append(add);
+  $("manage").textContent = managing ? "Done" : "Manage";
+  $("manage").hidden = !store.profiles.length;
 }
 function selectProfile(id){
   store.active = id; persist(); const p = prof();
-  items.forEach(it => { if (!it.sample){ it.mode = p.mode; it.boxes = clone(p.boxes); } });
-  sel = -1; renderChips(); draw(); buildResults();
-  status(p.boxes.length ? "Applied " + p.name + " boxes to every screenshot." : p.name + " has no boxes yet. Draw them, then tap Save boxes to this app.");
+  items = items.filter(x => !x.sample);
+  items.forEach(it => { it.bands = clone(p.bands); });
+  renderChips(); refresh();
+  status(p.bands.length ? "Using " + p.name + " rows." : p.name + " isn't set up yet. Add a screenshot, tap it, mark the rows, then tap Use for all " + p.name + " slips.");
 }
-function openNew(){ $("newApp").hidden = false; $("newName").value = ""; setNewMode("keep"); $("newName").focus(); }
-function setNewMode(m){ newMode = m; $("nmKeep").setAttribute("aria-pressed", m === "keep"); $("nmHide").setAttribute("aria-pressed", m === "hide"); }
-$("nmKeep").addEventListener("click", () => setNewMode("keep"));
-$("nmHide").addEventListener("click", () => setNewMode("hide"));
+$("manage").addEventListener("click", () => { managing = !managing; delArm = null; renderChips(); });
 $("newCancel").addEventListener("click", () => { $("newApp").hidden = true; });
 $("newSave").addEventListener("click", () => {
   const name = $("newName").value.trim(); if (!name){ $("newName").focus(); return; }
-  const it = items[cur];
-  const p = { id: uid(), name, mode: newMode, boxes: it && !it.sample && it.mode === newMode ? clone(it.boxes) : [] };
-  store.profiles.push(p); store.active = p.id; persist(); $("newApp").hidden = true;
-  items = items.filter(x => !x.sample); cur = Math.min(Math.max(cur, 0), items.length - 1);
-  items.forEach(x => { x.mode = p.mode; if (!p.boxes.length) x.boxes = []; else x.boxes = clone(p.boxes); });
-  renderChips(); draw(); buildResults();
-  status(name + " created. " + (items.length ? "Draw boxes on a screenshot, then tap Save boxes to this app." : "Add a screenshot from " + name + " and draw boxes."));
+  const p = { id: uid(), name, bands: [] }; store.profiles.push(p); store.active = p.id; persist();
+  $("newApp").hidden = true; items = items.filter(x => !x.sample); items.forEach(it => { it.bands = []; });
+  renderChips(); refresh();
+  status(name + " created. Add one screenshot from " + name + ", tap it, and mark the rows to show.");
 });
-
-/* ---------- files in ---------- */
 $("file").addEventListener("change", async e => {
   const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
-  items = items.filter(x => !x.sample);
-  status("Loading " + files.length + "...");
-  for (const f of files){
-    try{ const img = await loadImg(f); items.push(makeItem(f.name, img)); }
-    catch(err){ status("Couldn't read " + f.name + ". Try a PNG or JPG screenshot."); }
-  }
-  cur = items.length - files.length >= 0 ? items.length - files.length : 0; sel = -1;
-  draw(); await buildResults();
+  items = items.filter(x => !x.sample); status("Working on " + files.length + "...");
+  for (const f of files){ try{ items.push(makeItem(await loadImg(f), f.name)); }catch(err){ status("Couldn't open " + f.name + ". Use a normal screenshot."); } }
+  await refresh();
   const p = prof();
-  status(p && p.boxes.length ? "Blurred with " + p.name + " boxes. Check each one, then save." :
-         "Draw boxes, then tap Save boxes to this app so the next batch is automatic.");
+  if (!p) status("Tap + New app first so these rows can be remembered.");
+  else if (!p.bands.length) status("Tap a slip and mark the rows to show. Then tap Use for all " + p.name + " slips.");
+  else status("Done. Check them, then Save all.");
 });
 function loadImg(file){
   return new Promise((res, rej) => { const u = URL.createObjectURL(file); const im = new Image();
-    im.onload = () => { res(im); setTimeout(() => URL.revokeObjectURL(u), 1000); }; im.onerror = rej; im.src = u; });
+    im.onload = () => { res(im); setTimeout(() => URL.revokeObjectURL(u), 2000); }; im.onerror = rej; im.src = u; });
 }
 
-/* ---------- save out ---------- */
-function fileFor(it, i){
-  const stamp = new Date().toISOString().slice(0,10);
-  return new File([it.blob], "oto-slip-" + stamp + "-" + (i + 1) + ".png", { type: "image/png" });
-}
-async function shareFiles(files){
+/* ---------------- save / share ---------------- */
+$("saveAll").addEventListener("click", async () => {
+  const real = items.filter(x => !x.sample);
+  if (!real.length) return;
+  if (real.some(it => !it.blob)){ status("Still working, try again in a second."); return; }
+  const stamp = new Date().toISOString().slice(0, 10);
+  const files = real.map((it, i) => new File([it.blob], "oto-slip-" + stamp + "-" + (i + 1) + ".jpg", { type: "image/jpeg" }));
   if (navigator.canShare && navigator.canShare({ files })){
-    try{ await navigator.share({ files }); status(files.length > 1 ? "Shared " + files.length + " slips." : "Slip shared."); }
-    catch(err){ if (err && err.name === "AbortError") status("Share canceled."); else status("Couldn't open sharing. Press and hold an image to save it."); }
+    try{ await navigator.share({ files }); status("Sent. In the share sheet, Save Images puts them in your camera roll."); }
+    catch(err){ status(err && err.name === "AbortError" ? "Share closed." : "Couldn't open sharing. Press and hold a slip to save it."); }
     return;
   }
-  for (const f of files){
-    const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
-    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  }
-  status("Downloaded. If nothing happened, press and hold an image to save it.");
-}
-function saveOne(it, i){ if (!it.blob){ status("Still preparing, try again in a second."); return; } shareFiles([fileFor(it, i)]); }
-$("saveAll").addEventListener("click", () => {
-  if (!items.length || items.some(it => !it.blob)){ status("Still preparing, try again in a second."); return; }
-  shareFiles(items.map(fileFor));
+  for (const f of files){ const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.append(a); a.click(); a.remove(); }
+  status("Downloaded. If nothing happened, press and hold a slip to save it.");
 });
 
-/* ---------- start ---------- */
+/* ---------------- editor ---------------- */
+const ecv = $("ecv"), eg = ecv.getContext("2d");
+let ed = null;
+function openEditor(i){
+  const it = items[i]; ed = { i, bands: clone(it.bands), sel: -1, drag: null };
+  const p = prof(); $("edApp").textContent = p ? p.name : "app"; $("edSaveApp").hidden = !p || !!it.sample;
+  $("ed").hidden = false; document.body.classList.add("lock");
+  requestAnimationFrame(() => { sizeCanvas(); drawEd(); });
+}
+function closeEditor(){ $("ed").hidden = true; document.body.classList.remove("lock"); ed = null; }
+function sizeCanvas(){
+  const it = items[ed.i], st = $("stage"), aw = st.clientWidth - 16, ah = st.clientHeight - 8;
+  const k = Math.min(aw / it.w, ah / it.h), dpr = window.devicePixelRatio || 1;
+  const cw = Math.max(1, Math.floor(it.w * k)), ch = Math.max(1, Math.floor(it.h * k));
+  ecv.style.width = cw + "px"; ecv.style.height = ch + "px"; ecv.width = Math.round(cw * dpr); ecv.height = Math.round(ch * dpr);
+}
+window.addEventListener("resize", () => { if (ed){ sizeCanvas(); drawEd(); } });
+function handles(b){
+  return [ { k: "t", x: b.x + b.w / 2, y: b.y }, { k: "b", x: b.x + b.w / 2, y: b.y + b.h },
+           { k: "l", x: b.x, y: b.y + b.h / 2 }, { k: "r", x: b.x + b.w, y: b.y + b.h / 2 } ];
+}
+function drawEd(){
+  if (!ed) return; const it = items[ed.i], W = ecv.width, H = ecv.height, dpr = window.devicePixelRatio || 1;
+  eg.imageSmoothingQuality = "high";
+  eg.drawImage(it.soft, 0, 0, W, H);
+  for (const b of ed.bands){ const sx = b.x * it.w, sy = b.y * it.h, sw = b.w * it.w, sh = b.h * it.h;
+    if (sw > 0 && sh > 0) eg.drawImage(it.src, sx, sy, sw, sh, b.x * W, b.y * H, b.w * W, b.h * H); }
+  ed.bands.forEach((b, i) => {
+    eg.lineWidth = (i === ed.sel ? 3 : 2) * dpr; eg.strokeStyle = i === ed.sel ? "#6d93f2" : "#41c787";
+    eg.setLineDash(i === ed.sel ? [] : [6 * dpr, 4 * dpr]); eg.strokeRect(b.x * W + dpr, b.y * H + dpr, b.w * W - 2 * dpr, b.h * H - 2 * dpr);
+  });
+  eg.setLineDash([]);
+  if (ed.sel >= 0){
+    for (const h of handles(ed.bands[ed.sel])){
+      eg.beginPath(); eg.arc(h.x * W, h.y * H, 10 * dpr, 0, Math.PI * 2); eg.fillStyle = "#6d93f2"; eg.fill();
+      eg.lineWidth = 2 * dpr; eg.strokeStyle = "#ffffff"; eg.stroke();
+    }
+  }
+  $("edDel").disabled = ed.sel < 0;
+  $("edTip").textContent = ed.bands.length ? (ed.sel >= 0 ? "Drag the dots to resize, drag the row to move it." : "Drag over more rows, or tap Done.")
+                                           : "Drag up or down over each row to show it. Tap once for a quick row.";
+}
+function pos(e){ const r = ecv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, cx: e.clientX - r.left, cy: e.clientY - r.top, rw: r.width, rh: r.height }; }
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+ecv.addEventListener("pointerdown", e => {
+  if (!ed) return; e.preventDefault(); ecv.setPointerCapture(e.pointerId);
+  const p = pos(e);
+  if (ed.sel >= 0){
+    for (const h of handles(ed.bands[ed.sel])){
+      if (Math.hypot(h.x * p.rw - p.cx, h.y * p.rh - p.cy) < 28){ ed.drag = { kind: "h", k: h.k, start: { ...ed.bands[ed.sel] } }; return; }
+    }
+  }
+  for (let i = ed.bands.length - 1; i >= 0; i--){ const b = ed.bands[i];
+    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h){ ed.sel = i; ed.drag = { kind: "move", dx: p.x - b.x, dy: p.y - b.y }; drawEd(); return; } }
+  ed.sel = -1; ed.drag = { kind: "new", y0: p.y, idx: -1 }; drawEd();
+});
+ecv.addEventListener("pointermove", e => {
+  if (!ed || !ed.drag) return; const p = pos(e), d = ed.drag;
+  if (d.kind === "new"){
+    const y = Math.min(d.y0, p.y), h = Math.abs(p.y - d.y0);
+    if (d.idx < 0 && h > 0.008){ ed.bands.push({ x: 0, y, w: 1, h }); d.idx = ed.bands.length - 1; ed.sel = d.idx; }
+    if (d.idx >= 0){ const b = ed.bands[d.idx]; b.y = clamp(y, 0, 1); b.h = clamp(h, 0, 1 - b.y); }
+  } else if (d.kind === "move"){
+    const b = ed.bands[ed.sel]; b.x = clamp(p.x - d.dx, 0, 1 - b.w); b.y = clamp(p.y - d.dy, 0, 1 - b.h);
+  } else {
+    const b = ed.bands[ed.sel], s = d.start, m = 0.01;
+    if (d.k === "t"){ const y = clamp(p.y, 0, s.y + s.h - m); b.y = y; b.h = s.y + s.h - y; }
+    if (d.k === "b"){ b.h = clamp(p.y, s.y + m, 1) - s.y; }
+    if (d.k === "l"){ const x = clamp(p.x, 0, s.x + s.w - m); b.x = x; b.w = s.x + s.w - x; }
+    if (d.k === "r"){ b.w = clamp(p.x, s.x + m, 1) - s.x; }
+  }
+  drawEd();
+});
+function endEd(e){
+  if (!ed || !ed.drag) return; const d = ed.drag; ed.drag = null;
+  if (d.kind === "new" && d.idx < 0){ const p = pos(e), h = 0.045; ed.bands.push({ x: 0, y: clamp(p.y - h / 2, 0, 1 - h), w: 1, h }); ed.sel = ed.bands.length - 1; }
+  drawEd();
+}
+ecv.addEventListener("pointerup", endEd); ecv.addEventListener("pointercancel", endEd);
+$("edDel").addEventListener("click", () => { if (ed && ed.sel >= 0){ ed.bands.splice(ed.sel, 1); ed.sel = -1; drawEd(); } });
+$("edClear").addEventListener("click", () => { if (ed){ ed.bands = []; ed.sel = -1; drawEd(); } });
+$("edCancel").addEventListener("click", closeEditor);
+$("edDone").addEventListener("click", () => { const it = items[ed.i]; it.bands = clone(ed.bands); closeEditor(); refresh(it); status(""); });
+$("edSaveApp").addEventListener("click", () => {
+  const p = prof(); if (!p || !ed) return;
+  p.bands = clone(ed.bands); persist();
+  items.forEach(it => { if (!it.sample) it.bands = clone(p.bands); });
+  closeEditor(); refresh(); status("Saved. New " + p.name + " screenshots will come out like this automatically.");
+});
+
+/* ---------------- start ---------------- */
 load(); renderChips();
-const s = makeItem("sample", sampleSlip()); s.sample = true; s.mode = "keep"; s.boxes = clone(SAMPLE_BOXES);
-if (!prof()) items = [s]; cur = items.length ? 0 : -1;
-draw(); buildResults();
-status(prof() ? "" : "Sample slip shown. Tap + New app to set up your first app.");
+if (!store.profiles.length){
+  const s = makeItem(sampleSlip(), "sample"); s.sample = true; s.bands = clone(SAMPLE_BANDS); items = [s];
+  status("This is an example. Tap + New app to set up your first app.");
+}
+refresh();
 })();
 </script>
 </body>
