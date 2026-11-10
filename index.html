@@ -78,8 +78,8 @@ var ln=box.querySelector('.ln');if(animate&&ln.getTotalLength){ln.style.setPrope
 var s=box.querySelector('svg'),tip=box.querySelector('.tip'),xh=box.querySelector('.xh'),hit=box.querySelector('.hit');
 function show(e){var b=s.getBoundingClientRect(),px=(e.clientX-b.left)/b.width*W,i=Math.round((px-L)/(W-L-R)*n);i=Math.max(1,Math.min(n,i));
 var r=rs[i-1],cx=X(i),cy=Y(vals[i]);xh.setAttribute('x1',cx);xh.setAttribute('x2',cx);xh.style.display='';
-tip.innerHTML='<div class="th">'+esc(r.d)+' · '+esc(r.lg)+' · <b class="'+cls(r.u)+'">'+r.r.toUpperCase()+' '+fu(r.u)+'</b></div><div>'+esc(r.p)+' '+esc(r.o)+'</div><div>Running <b>'+fu(vals[i])+'</b></div>';
-tip.style.display='block';var lx=cx/W*b.width;tip.style.left=Math.min(Math.max(lx-85,0),b.width-170)+'px';tip.style.top=Math.max(cy/H*b.height-74,0)+'px'}
+tip.innerHTML='<div class="th">'+esc(r.d)+' · '+esc(r.lg)+' · <b class="'+cls(r.u)+'">'+r.r.toUpperCase()+' '+fu(r.u)+'</b></div><div>'+esc(r.p)+' '+esc(r.o)+'</div>'+(r.g?'<div style="opacity:.75;font-size:12px">'+esc(r.g)+'</div>':'')+'<div>Running <b>'+fu(vals[i])+'</b></div>';
+tip.style.display='block';var lx=cx/W*b.width;tip.style.left=Math.min(Math.max(lx-85,0),b.width-170)+'px';tip.style.top=Math.max(cy/H*b.height-92,0)+'px'}
 function hide(){tip.style.display='none';xh.style.display='none'}
 hit.addEventListener('mousemove',show);hit.addEventListener('mouseleave',hide);
 hit.addEventListener('touchstart',function(e){show(e.touches[0])},{passive:true});hit.addEventListener('touchmove',function(e){show(e.touches[0])},{passive:true})}
