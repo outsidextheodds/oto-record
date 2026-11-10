@@ -127,6 +127,7 @@ button:disabled{opacity:.45}
     <button type="button" id="edDel" disabled>Delete row</button>
     <button type="button" id="edClear">Clear</button>
     <button type="button" id="edSaveApp">Use for all <span id="edApp">app</span> slips</button>
+    <button type="button" id="edSmart" aria-pressed="true">Smart find: On</button>
   </div>
 </div>
 
@@ -238,6 +239,88 @@ function makeItem(img, name){
   setMarks(it, p || {}); return it;
 }
 
+
+/* ---------------- smart fit (Nov 10): find the card + the money on EVERY screenshot ----------------
+   Fixed boxes break when the app moves things (scroll, a longer market name, a banner). Smart mode looks at each
+   screenshot: finds the slip card by its color, reads the text on this phone (tesseract.js, nothing is uploaded) and
+   solid-fills every row with a dollar amount or a cost/payout/contracts/shares/balance/order label. */
+let tessP = null;
+function tess(){
+  if (!tessP) tessP = new Promise((res, rej) => {
+    if (window.Tesseract) return res(window.Tesseract);
+    const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+    sc.onload = () => res(window.Tesseract); sc.onerror = () => rej(new Error("ocr")); document.head.append(sc);
+  }).then(T => T.createWorker("eng")).catch(e => { tessP = null; throw e; });
+  return tessP;
+}
+function medColor(it, b){
+  const q = rect(b, it.w, it.h); if (q.w < 2 || q.h < 2) return null;
+  const d = it.src.getContext("2d").getImageData(q.x, q.y, q.w, q.h).data, step = Math.max(4, Math.floor(d.length / 4 / 4000) * 4);
+  const rs = [], gs = [], bs = []; for (let i = 0; i < d.length; i += step){ rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]); }
+  const med = a => { a.sort((x, y) => x - y); return a[a.length >> 1]; }; return [med(rs), med(gs), med(bs)];
+}
+function detectCard(it, col){
+  const W = 160, H = Math.max(1, Math.round(it.h * W / it.w));
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d"); g.drawImage(it.src, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H).data;
+  const near = i => { const a = d[i] - col[0], b = d[i + 1] - col[1], e = d[i + 2] - col[2]; return a * a + b * b + e * e < 484; };
+  const rowOK = []; for (let y = 0; y < H; y++){ let n = 0; for (let x = 0; x < W; x++) if (near((y * W + x) * 4)) n++; rowOK.push(n / W >= 0.45); }
+  const gap = Math.max(2, Math.round(H * 0.03)); let best = null, st = -1, last = -1;
+  for (let y = 0; y <= H; y++){
+    const ok = y < H && rowOK[y];
+    if (ok){ if (st < 0) st = y; last = y; }
+    if (st >= 0 && (y === H || (!ok && y - last > gap))){ if (!best || last - st > best[1] - best[0]) best = [st, last]; st = -1; }
+  }
+  if (!best || best[1] - best[0] < H * 0.08) return null;
+  let l = W, r = 0; const rh = best[1] - best[0] + 1;
+  for (let x = 0; x < W; x++){ let n = 0; for (let y = best[0]; y <= best[1]; y++) if (near((y * W + x) * 4)) n++; if (n / rh >= 0.45){ l = Math.min(l, x); r = Math.max(r, x); } }
+  if (r - l < W * 0.3) return null;
+  const px = 0.01, x0 = Math.max(0, l / W - px), y0 = Math.max(0, best[0] / H - px);
+  return { x: x0, y: y0, w: Math.min(1 - x0, (r - l + 1) / W + 2 * px), h: Math.min(1 - y0, rh / H + 2 * px),
+           ix: (l + 2) / W, iw: Math.max(0.05, (r - l - 3) / W) };   // inner edges (inside the rounded corners) for row fills
+}
+const MONEY = /\$\s?\d|\d\s?usd\b|\b(cost|payout|paid|to win|wager|stake|balance|contracts?|shares?|total|profit|return|value|amount|potential|cash ?out|order|ticket)\b|#\s?[a-z0-9-]{4,}/i;
+async function ocrLines(it, box){
+  const q = box ? rect(box, it.w, it.h) : { x: 0, y: 0, w: it.w, h: it.h };
+  const k = q.w < 900 ? 2 : 1, c = document.createElement("canvas"); c.width = q.w * k; c.height = q.h * k;
+  const g = c.getContext("2d"); g.drawImage(it.src, q.x, q.y, q.w, q.h, 0, 0, c.width, c.height);
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data; let sum = 0;
+  for (let i = 0; i < d.length; i += 4){ const v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; d[i] = d[i + 1] = d[i + 2] = v; sum += v; }
+  if (sum / (d.length / 4) < 128) for (let i = 0; i < d.length; i += 4){ d[i] = d[i + 1] = d[i + 2] = 255 - d[i]; }
+  g.putImageData(im, 0, 0);
+  const w = await tess(), r = await w.recognize(c);
+  return ((r.data && r.data.lines) || []).map(L => ({ text: L.text || "", x: q.x + L.bbox.x0 / k, y: q.y + L.bbox.y0 / k,
+    w: (L.bbox.x1 - L.bbox.x0) / k, h: (L.bbox.y1 - L.bbox.y0) / k }));
+}
+async function smartFit(it, p){
+  const col = p.cardColor || (p.crop ? medColor(it, p.crop) : null);
+  const card = col ? detectCard(it, col) : null;
+  let lines = [], ocrOK = true;
+  try{ lines = await ocrLines(it, card); }catch(e){ ocrOK = false; }
+  const flag = lines.filter(L => MONEY.test(L.text));
+  const rows = lines.filter(L => flag.some(F => L.y + L.h / 2 > F.y - 2 && L.y + L.h / 2 < F.y + F.h + 2));
+  const hides = [];
+  for (const L of rows){
+    const pad = L.h * 0.4, x0 = card ? card.ix * it.w : Math.max(0, L.x - pad), x1 = card ? (card.ix + card.iw) * it.w : Math.min(it.w, L.x + L.w + pad);
+    const y0 = Math.max(0, L.y - pad);
+    hides.push({ x: x0 / it.w, y: y0 / it.h, w: (x1 - x0) / it.w, h: Math.min(it.h - y0, L.h + 2 * pad) / it.h, auto: true });
+  }
+  if (card && p.hidesRel) for (const r of p.hidesRel) hides.push({ x: card.x + r.x * card.w, y: card.y + r.y * card.h, w: r.w * card.w, h: r.h * card.h });
+  it.bands = [];
+  it.crop = card ? { x: card.x, y: card.y, w: card.w, h: card.h } : (p.crop ? { ...p.crop } : null);
+  it.hides = hides.length ? hides : clone(p.hides || []);
+  it.smart = { card: !!card, money: flag.length, ocr: ocrOK };
+}
+const smartOn = p => !!p && p.smart !== false;
+async function smartAll(list){
+  const p = prof(); if (!smartOn(p)) return;
+  const todo = list.filter(it => !it.sample);
+  for (let i = 0; i < todo.length; i++){
+    status(i === 0 && !window.Tesseract ? "Loading the text reader (first time only, then it's fast)..." : "Reading slip " + (i + 1) + " of " + todo.length + "...");
+    await smartFit(todo[i], p);
+  }
+}
+
 /* ---------------- sample slip (first open only) ---------------- */
 function sampleSlip(){
   const c = document.createElement("canvas"); c.width = 900; c.height = 1500; const g = c.getContext("2d");
@@ -267,8 +350,9 @@ async function refresh(only){
   items.forEach((it, i) => {
     const b = document.createElement("button"); b.type = "button"; b.className = "res"; b.setAttribute("aria-label", "Edit slip " + (i + 1));
     const im = document.createElement("img"); im.src = it.url; im.alt = "Blurred slip " + (i + 1);
-    const tag = document.createElement("span"); tag.className = "tag" + (hasMarks(it) ? "" : " warn");
-    tag.textContent = it.sample ? "Example" : (hasMarks(it) ? "Slip " + (i + 1) : "Tap to mark");
+    const chk = it.smart && (!it.smart.ocr || !it.smart.money);
+    const tag = document.createElement("span"); tag.className = "tag" + (hasMarks(it) && !chk ? "" : " warn");
+    tag.textContent = it.sample ? "Example" : (!hasMarks(it) ? "Tap to mark" : chk ? "Check this one" : (it.smart ? "Auto " : "Slip ") + (i + 1));
     b.append(im, tag); b.addEventListener("click", () => openEditor(i)); box.append(b);
   });
   $("empty").hidden = items.length > 0;
@@ -303,8 +387,9 @@ function renderChips(){
 function selectProfile(id){
   store.active = id; persist(); const p = prof();
   items = items.filter(x => !x.sample);
-  items.forEach(it => setMarks(it, p));
+  items.forEach(it => { setMarks(it, p); it.smart = null; });
   renderChips(); refresh();
+  if (smartOn(p) && items.length) smartAll(items).then(() => refresh());
   status(hasMarks(marks(p)) ? "Using " + p.name + " setup." : p.name + " isn't set up yet. Add a screenshot, tap it, mark the rows, then tap Use for all " + p.name + " slips.");
 }
 $("manage").addEventListener("click", () => { managing = !managing; delArm = null; renderChips(); });
@@ -319,11 +404,14 @@ $("newSave").addEventListener("click", () => {
 $("file").addEventListener("change", async e => {
   const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
   items = items.filter(x => !x.sample); status("Working on " + files.length + "...");
-  for (const f of files){ try{ items.push(makeItem(await loadImg(f), f.name)); }catch(err){ status("Couldn't open " + f.name + ". Use a normal screenshot."); } }
+  const added = [];
+  for (const f of files){ try{ const it = makeItem(await loadImg(f), f.name); items.push(it); added.push(it); }catch(err){ status("Couldn't open " + f.name + ". Use a normal screenshot."); } }
+  try{ await smartAll(added); }catch(e){}
   await refresh();
   const p = prof();
   if (!p) status("Tap + New app first so these rows can be remembered.");
   else if (!hasMarks(marks(p))) status("Tap a slip and mark the rows to show. Then tap Use for all " + p.name + " slips.");
+  else if (added.some(it => it.smart && (!it.smart.ocr || !it.smart.money))) status("Done. Anything marked Check this one: tap it and fix the boxes.");
   else status("Done. Check them, then Save all.");
 });
 function loadImg(file){
@@ -361,6 +449,7 @@ function openEditor(i){
   const it = items[i]; ed = { i, m: marks(it), mode: "show", sel: null, drag: null };
   if (!it.sample && !it.bands.length && (it.crop || it.hides.length)) ed.mode = it.crop ? "crop" : "hide";
   const p = prof(); $("edApp").textContent = p ? p.name : "app"; $("edSaveApp").hidden = !p || !!it.sample;
+  smartBtn();
   setMode(ed.mode);
   $("ed").hidden = false; document.body.classList.add("lock");
   requestAnimationFrame(() => { sizeCanvas(); drawEd(); });
@@ -461,12 +550,26 @@ $("edDel").addEventListener("click", () => {
 });
 $("edClear").addEventListener("click", () => { if (ed){ ed.m = { bands: [], hides: [], crop: null }; ed.sel = null; drawEd(); } });
 $("edCancel").addEventListener("click", closeEditor);
+function smartBtn(){ const p = prof(), on = smartOn(p); $("edSmart").setAttribute("aria-pressed", on ? "true" : "false"); $("edSmart").textContent = "Smart find: " + (on ? "On" : "Off"); $("edSmart").disabled = !p; }
+$("edSmart").addEventListener("click", () => { const p = prof(); if (!p) return; p.smart = !smartOn(p); persist(); smartBtn();
+  status(p.smart ? "Smart find on - each screenshot gets its own boxes." : "Smart find off - the saved boxes are used as drawn."); });
 $("edDone").addEventListener("click", () => { const it = items[ed.i]; setMarks(it, ed.m); closeEditor(); refresh(it); status(""); });
 $("edSaveApp").addEventListener("click", () => {
   const p = prof(); if (!p || !ed) return;
-  setMarks(p, ed.m); persist();
-  items.forEach(it => { if (!it.sample) setMarks(it, p); });
-  closeEditor(); refresh(); status("Saved. New " + p.name + " screenshots will come out like this automatically.");
+  const it0 = items[ed.i], manual = ed.m.hides.filter(b => !b.auto);
+  setMarks(p, { bands: ed.m.bands, hides: manual, crop: ed.m.crop }); 
+  if (ed.m.crop){
+    p.cardColor = medColor(it0, ed.m.crop) || p.cardColor || null;
+    const c = ed.m.crop; p.hidesRel = manual.map(b => ({ x: (b.x - c.x) / c.w, y: (b.y - c.y) / c.h, w: b.w / c.w, h: b.h / c.h }));
+  } else { p.hidesRel = []; }
+  if (p.smart === undefined) p.smart = true;
+  persist();
+  const others = items.filter(it => !it.sample && it !== it0);
+  setMarks(it0, ed.m);
+  others.forEach(it => setMarks(it, p));
+  closeEditor(); refresh();
+  if (smartOn(p) && others.length) smartAll(others).then(() => refresh());
+  status("Saved. New " + p.name + " screenshots will find the slip and the money automatically.");
 });
 
 /* ---------------- start ---------------- */
