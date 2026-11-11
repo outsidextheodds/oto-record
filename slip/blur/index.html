@@ -279,7 +279,7 @@ function detectCard(it, col){
   return { x: x0, y: y0, w: Math.min(1 - x0, (r - l + 1) / W + 2 * px), h: Math.min(1 - y0, rh / H + 2 * px),
            ix: (l + 2) / W, iw: Math.max(0.05, (r - l - 3) / W) };   // inner edges (inside the rounded corners) for row fills
 }
-const MONEY = /\$\s?\d|\d\s?usd\b|\b(cost|payout|paid|to win|wager|stake|balance|contracts?|shares?|total|profit|return|value|amount|potential|cash ?out|order|ticket)\b|#\s?[a-z0-9-]{4,}/i;
+const MONEY = /\$\s?\d|\d\s?usd\b|\b(cost|payout|paid|to win|wager|stake|balance|contracts?|shares?|total|profit|return|value|amount|potential|cash ?out|order|ticket)\b|#\s?[a-z0-9-]{4,}|\b(bet|slip|wager|order|ticket|transaction|confirmation|account|user) ?(id|no\.?|number|#)|\bid\s?[:#]|\b\d{7,}\b|@[a-z0-9_.]{3,}|\b(referral|promo|invite)\b|\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b|\b(username|member|signed in)\b/i;
 async function ocrLines(it, box){
   const q = box ? rect(box, it.w, it.h) : { x: 0, y: 0, w: it.w, h: it.h };
   const k = q.w < 900 ? 2 : 1, c = document.createElement("canvas"); c.width = q.w * k; c.height = q.h * k;
