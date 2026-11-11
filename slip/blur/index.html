@@ -91,8 +91,8 @@ button:disabled{opacity:.45}
       <button type="button" class="ghost" id="manage">Manage</button></div>
     <div class="row" id="chips"></div>
     <div class="card" id="newApp" hidden>
-      <label class="label" for="newName">New app name</label>
-      <input type="text" id="newName" placeholder="Polymarket" maxlength="24" autocomplete="off">
+      <label class="label" for="newName">New layout name (app + league)</label>
+      <input type="text" id="newName" placeholder="Kalshi NBA" maxlength="24" autocomplete="off">
       <div class="row"><button type="button" class="primary" id="newSave">Create</button><button type="button" id="newCancel">Cancel</button></div>
     </div>
   </section>
@@ -379,7 +379,7 @@ function renderChips(){
       c.append(d);
     }
   });
-  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ New app";
+  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ New layout";
   add.addEventListener("click", () => { $("newApp").hidden = false; $("newName").value = ""; $("newName").focus(); }); c.append(add);
   $("manage").textContent = managing ? "Done" : "Manage";
   $("manage").hidden = !store.profiles.length;
@@ -409,7 +409,7 @@ $("file").addEventListener("change", async e => {
   try{ await smartAll(added); }catch(e){}
   await refresh();
   const p = prof();
-  if (!p) status("Tap + New app first so these rows can be remembered.");
+  if (!p) status("Tap + New layout first (one per app and league, e.g. Kalshi NBA) so these rows can be remembered.");
   else if (!hasMarks(marks(p))) status("Tap a slip and mark the rows to show. Then tap Use for all " + p.name + " slips.");
   else if (added.some(it => it.smart && (!it.smart.ocr || !it.smart.money))) status("Done. Anything marked Check this one: tap it and fix the boxes.");
   else status("Done. Check them, then Save all.");
@@ -576,7 +576,7 @@ $("edSaveApp").addEventListener("click", () => {
 load(); renderChips();
 if (!store.profiles.length){
   const s = makeItem(sampleSlip(), "sample"); s.sample = true; setMarks(s, SAMPLE); items = [s];
-  status("This is an example. Tap + New app to set up your first app.");
+  status("This is an example. Tap + New layout to set up your first one (one per app and league, e.g. Kalshi NBA, Kalshi NHL).");
 }
 refresh();
 })();
