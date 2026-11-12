@@ -56,6 +56,10 @@ button:disabled{opacity:.45}
 .res .tag{position:absolute;left:8px;bottom:8px;font:600 12px var(--display);letter-spacing:.06em;text-transform:uppercase;
   background:rgba(10,14,22,.72);color:#fff;padding:4px 8px;border-radius:999px}
 .res .tag.warn{background:var(--warn)}
+.resw{position:relative;min-width:0}
+.resw .res{width:100%}
+.del{position:absolute;top:6px;right:6px;min-height:36px;min-width:36px;padding:4px 10px;border-radius:999px;border:0;background:rgba(10,14,22,.78);color:#fff;font-size:20px;line-height:1}
+.del.arm{background:#d2453b;font-size:13px;font-weight:700}
 .empty{color:var(--muted);font-size:15px;margin:0}
 .status{font-size:14px;color:var(--muted);min-height:1.3em;margin:0}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);
@@ -104,7 +108,7 @@ button:disabled{opacity:.45}
     <p class="status" id="status" role="status"></p>
     <div class="results" id="results"></div>
     <p class="empty" id="empty" hidden>No screenshots yet. Tap Add screenshots.</p>
-    <p class="sub">Tap a slip to change what shows. Press and hold a slip to save just that one.</p>
+    <p class="sub">Each layout keeps its own slips. Tap a slip to change what shows, tap × to remove one (then add it under the right layout). Save all saves every layout at once.</p>
   </section>
 </div>
 
@@ -136,7 +140,8 @@ button:disabled{opacity:.45}
 const KEY = "oto-slip-blur-v2";
 const $ = id => document.getElementById(id);
 let store = { profiles: [], active: null };
-let items = [], managing = false, delArm = null;
+let items = [], managing = false, delArm = null, delSlip = null;
+const shown = it => it.sample || it.pid === store.active;   // Nov 12: each slip belongs to the layout it was added under
 const uid = () => Math.random().toString(36).slice(2, 9);
 const clone = a => a.map(b => ({ ...b }));
 const status = t => { $("status").textContent = t || ""; };
@@ -235,7 +240,7 @@ function bgColor(it, b){
 }
 function makeItem(img, name){
   const src = toCanvas(img), p = prof();
-  const it = { id: uid(), name, src, w: src.width, h: src.height, flat: flatten(src), blob: null, url: null };
+  const it = { id: uid(), pid: store.active, name, src, w: src.width, h: src.height, flat: flatten(src), blob: null, url: null };
   setMarks(it, p || {}); return it;
 }
 
@@ -344,37 +349,54 @@ const SAMPLE = { bands: [], crop: { x: 40 / 900, y: 280 / 1500, w: 820 / 900, h:
                  hides: [ { x: 70 / 900, y: 625 / 1500, w: 760 / 900, h: 50 / 1500 }, { x: 70 / 900, y: 745 / 1500, w: 500 / 900, h: 50 / 1500 } ] };
 
 /* ---------------- main screen ---------------- */
-async function refresh(only){
-  for (const it of items){ if (only && it !== only) continue; const b = await finalBlob(it); if (it.url) URL.revokeObjectURL(it.url); it.blob = b; it.url = URL.createObjectURL(b); }
+async function refresh(only, noBlobs){
+  for (const it of items){ if (noBlobs || (only && it !== only)) continue; const b = await finalBlob(it); if (it.url) URL.revokeObjectURL(it.url); it.blob = b; it.url = URL.createObjectURL(b); }
   const box = $("results"); box.textContent = "";
+  let n = 0;
   items.forEach((it, i) => {
-    const b = document.createElement("button"); b.type = "button"; b.className = "res"; b.setAttribute("aria-label", "Edit slip " + (i + 1));
-    const im = document.createElement("img"); im.src = it.url; im.alt = "Blurred slip " + (i + 1);
+    if (!shown(it)) return; n++;
+    const w = document.createElement("div"); w.className = "resw";
+    const b = document.createElement("button"); b.type = "button"; b.className = "res"; b.setAttribute("aria-label", "Edit slip " + n);
+    const im = document.createElement("img"); im.src = it.url; im.alt = "Blurred slip " + n;
     const chk = it.smart && (!it.smart.ocr || !it.smart.money);
     const tag = document.createElement("span"); tag.className = "tag" + (hasMarks(it) && !chk ? "" : " warn");
-    tag.textContent = it.sample ? "Example" : (!hasMarks(it) ? "Tap to mark" : chk ? "Check this one" : (it.smart ? "Auto " : "Slip ") + (i + 1));
-    b.append(im, tag); b.addEventListener("click", () => openEditor(i)); box.append(b);
+    tag.textContent = it.sample ? "Example" : (!hasMarks(it) ? "Tap to mark" : chk ? "Check this one" : (it.smart ? "Auto " : "Slip ") + n);
+    b.append(im, tag); b.addEventListener("click", () => openEditor(i)); w.append(b);
+    if (!it.sample){
+      const x = document.createElement("button"); x.type = "button"; const armed = delSlip === it.id;
+      x.className = "del" + (armed ? " arm" : ""); x.textContent = armed ? "Delete?" : "×";
+      x.setAttribute("aria-label", armed ? "Tap again to delete slip " + n : "Delete slip " + n);
+      x.addEventListener("click", e => { e.stopPropagation();
+        if (delSlip !== it.id){ delSlip = it.id; refresh(null, true); return; }
+        if (it.url) URL.revokeObjectURL(it.url); items = items.filter(y => y !== it); delSlip = null; refresh(null, true);
+        status("Deleted. Pick the right layout and add it again."); });
+      w.append(x);
+    }
+    box.append(w);
   });
-  $("empty").hidden = items.length > 0;
+  $("empty").hidden = n > 0;
   const real = items.filter(x => !x.sample).length;
-  $("count").textContent = real ? real + (real === 1 ? " slip" : " slips") : "";
+  $("count").textContent = !real ? "" : (real > n ? n + " here · " + real + " total" : real + (real === 1 ? " slip" : " slips"));
   $("saveAll").disabled = !real;
   $("saveAll").textContent = real ? "Save all " + real : "Save all";
+  renderChips();
 }
 function renderChips(){
   const c = $("chips"); c.textContent = "";
   store.profiles.forEach(p => {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = p.name;
+    const b = document.createElement("button"); b.type = "button"; const cnt = items.filter(x => !x.sample && x.pid === p.id).length;
+    b.textContent = p.name + (cnt ? " · " + cnt : "");
     b.setAttribute("aria-pressed", p.id === store.active ? "true" : "false");
     b.addEventListener("click", () => selectProfile(p.id)); c.append(b);
     if (managing){
       const d = document.createElement("button"); d.type = "button"; d.className = "danger";
-      d.textContent = delArm === p.id ? "Tap again to delete" : "Delete " + p.name;
+      const k = items.filter(x => !x.sample && x.pid === p.id).length;
+      d.textContent = delArm === p.id ? "Tap again to delete" + (k ? " (and its " + k + (k === 1 ? " slip)" : " slips)") : "") : "Delete " + p.name;
       d.addEventListener("click", () => {
         if (delArm !== p.id){ delArm = p.id; renderChips(); return; }
-        store.profiles = store.profiles.filter(x => x.id !== p.id);
+        store.profiles = store.profiles.filter(x => x.id !== p.id); items = items.filter(x => x.pid !== p.id);
         if (store.active === p.id) store.active = store.profiles[0] ? store.profiles[0].id : null;
-        delArm = null; persist(); renderChips();
+        delArm = null; persist(); refresh(null, true);
       });
       c.append(d);
     }
@@ -386,10 +408,8 @@ function renderChips(){
 }
 function selectProfile(id){
   store.active = id; persist(); const p = prof();
-  items = items.filter(x => !x.sample);
-  items.forEach(it => { setMarks(it, p); it.smart = null; });
-  renderChips(); refresh();
-  if (smartOn(p) && items.length) smartAll(items).then(() => refresh());
+  items = items.filter(x => !x.sample); delSlip = null;
+  refresh(null, true);
   status(hasMarks(marks(p)) ? "Using " + p.name + " setup." : p.name + " isn't set up yet. Add a screenshot, tap it, mark the rows, then tap Use for all " + p.name + " slips.");
 }
 $("manage").addEventListener("click", () => { managing = !managing; delArm = null; renderChips(); });
@@ -397,8 +417,8 @@ $("newCancel").addEventListener("click", () => { $("newApp").hidden = true; });
 $("newSave").addEventListener("click", () => {
   const name = $("newName").value.trim(); if (!name){ $("newName").focus(); return; }
   const p = { id: uid(), name, bands: [], hides: [], crop: null }; store.profiles.push(p); store.active = p.id; persist();
-  $("newApp").hidden = true; items = items.filter(x => !x.sample); items.forEach(it => setMarks(it, p));
-  renderChips(); refresh();
+  $("newApp").hidden = true; items = items.filter(x => !x.sample); delSlip = null;
+  refresh(null, true);
   status(name + " created. Add one screenshot from " + name + ", tap it, and mark the rows to show.");
 });
 $("file").addEventListener("change", async e => {
@@ -425,7 +445,10 @@ $("saveAll").addEventListener("click", async () => {
   if (!real.length) return;
   if (real.some(it => !it.blob)){ status("Still working, try again in a second."); return; }
   const stamp = new Date().toISOString().slice(0, 10);
-  const files = real.map((it, i) => new File([it.blob], "oto-slip-" + stamp + "-" + (i + 1) + ".jpg", { type: "image/jpeg" }));
+  const slug = id => { const p = store.profiles.find(x => x.id === id); return p ? p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "slip"; };
+  const seen = {};
+  const files = real.map(it => { const s = slug(it.pid); seen[s] = (seen[s] || 0) + 1;
+    return new File([it.blob], "oto-" + s + "-" + stamp + "-" + seen[s] + ".jpg", { type: "image/jpeg" }); });
   if (navigator.canShare && navigator.canShare({ files })){
     try{ await navigator.share({ files }); status("Sent. In the share sheet, Save Images puts them in your camera roll."); }
     catch(err){ status(err && err.name === "AbortError" ? "Share closed." : "Couldn't open sharing. Press and hold a slip to save it."); }
@@ -564,7 +587,7 @@ $("edSaveApp").addEventListener("click", () => {
   } else { p.hidesRel = []; }
   if (p.smart === undefined) p.smart = true;
   persist();
-  const others = items.filter(it => !it.sample && it !== it0);
+  const others = items.filter(it => !it.sample && it !== it0 && it.pid === p.id);
   setMarks(it0, ed.m);
   others.forEach(it => setMarks(it, p));
   closeEditor(); refresh();
