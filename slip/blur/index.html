@@ -284,7 +284,7 @@ function detectCard(it, col){
   return { x: x0, y: y0, w: Math.min(1 - x0, (r - l + 1) / W + 2 * px), h: Math.min(1 - y0, rh / H + 2 * px),
            ix: (l + 2) / W, iw: Math.max(0.05, (r - l - 3) / W) };   // inner edges (inside the rounded corners) for row fills
 }
-const MONEY = /\$\s?\d|\d\s?usd\b|\b(cost|payout|paid|to win|wager|stake|balance|contracts?|shares?|total|profit|return|value|amount|potential|cash ?out|order|ticket)\b|#\s?[a-z0-9-]{4,}|\b(bet|slip|wager|order|ticket|transaction|confirmation|account|user) ?(id|no\.?|number|#)|\bid\s?[:#]|\b\d{7,}\b|@[a-z0-9_.]{3,}|\b(referral|promo|invite)\b|\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b|\b(username|member|signed in)\b/i;
+const MONEY = /\$\s?\d|\d\s?usd\b|\b(cost|payout|paid|to win|wager|stake|balance|contracts?|shares?|profit|amount|potential|cash ?out|order|ticket)\b|\btotal\s*(cost|paid|payout|return|wager|stake|\$)|\b(potential|est\.?|total) return\b|\b(market|cash|current|position) value\b|#\s?[a-z0-9-]{4,}|\b(bet|slip|wager|order|ticket|transaction|confirmation|account|user) ?(id|no\.?|number|#)|\bid\s?[:#]|\b\d{7,}\b|@[a-z0-9_.]{3,}|\b(referral|promo|invite)\b|\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b|\b(username|member|signed in)\b/i;
 async function ocrLines(it, box){
   const q = box ? rect(box, it.w, it.h) : { x: 0, y: 0, w: it.w, h: it.h };
   const k = q.w < 900 ? 2 : 1, c = document.createElement("canvas"); c.width = q.w * k; c.height = q.h * k;
@@ -299,10 +299,14 @@ async function ocrLines(it, box){
 }
 async function smartFit(it, p){
   const col = p.cardColor || (p.crop ? medColor(it, p.crop) : null);
-  const card = col ? detectCard(it, col) : null;
+  let card = col ? detectCard(it, col) : null;
+  if (card && p.crop && (Math.abs(card.w - p.crop.w) > 0.08 || Math.abs(card.x - p.crop.x) > 0.06 || card.h < p.crop.h * 0.5 || card.h > Math.min(1, p.crop.h * 2.2)))
+    card = null;   // Nov 15: found something that isn't this layout's slip card -> don't trust it (was cropping random areas)
   let lines = [], ocrOK = true;
   try{ lines = await ocrLines(it, card); }catch(e){ ocrOK = false; }
-  const flag = lines.filter(L => MONEY.test(L.text));
+  // Nov 15 (Carson): the pick itself (Over 51.5 / +2.5 / wins by) must never be hidden unless it carries a dollar amount
+  const PICK = /\b(over|under)\s+\d|wins? by|\b(spread|total points|moneyline)\b|(^|\s)[+-]\d{1,2}(\.5)?(\s|$)/i;
+  const flag = lines.filter(L => MONEY.test(L.text) && !(PICK.test(L.text) && !/\$\s?\d/.test(L.text)));
   const rows = lines.filter(L => flag.some(F => L.y + L.h / 2 > F.y - 2 && L.y + L.h / 2 < F.y + F.h + 2));
   const hides = [];
   for (const L of rows){
@@ -310,7 +314,12 @@ async function smartFit(it, p){
     const y0 = Math.max(0, L.y - pad);
     hides.push({ x: x0 / it.w, y: y0 / it.h, w: (x1 - x0) / it.w, h: Math.min(it.h - y0, L.h + 2 * pad) / it.h, auto: true });
   }
-  if (card && p.hidesRel) for (const r of p.hidesRel) hides.push({ x: card.x + r.x * card.w, y: card.y + r.y * card.h, w: r.w * card.w, h: r.h * card.h });
+  if (card && p.hidesAnc){   // Nov 15: each saved box keeps its distance from the card edge it was nearer to
+    for (const r of p.hidesAnc){
+      const y = r.edge === "b" ? card.y + card.h - r.dy - r.h : card.y + r.dy;
+      if (y >= card.y - 0.01 && y + r.h <= card.y + card.h + 0.01) hides.push({ x: card.x + r.x * card.w, y, w: r.w * card.w, h: r.h });
+    }
+  } else if (card && p.hidesRel) for (const r of p.hidesRel) hides.push({ x: card.x + r.x * card.w, y: card.y + r.y * card.h, w: r.w * card.w, h: r.h * card.h });
   it.bands = [];
   it.crop = card ? { x: card.x, y: card.y, w: card.w, h: card.h } : (p.crop ? { ...p.crop } : null);
   it.hides = hides.length ? hides : clone(p.hides || []);
@@ -584,7 +593,9 @@ $("edSaveApp").addEventListener("click", () => {
   if (ed.m.crop){
     p.cardColor = medColor(it0, ed.m.crop) || p.cardColor || null;
     const c = ed.m.crop; p.hidesRel = manual.map(b => ({ x: (b.x - c.x) / c.w, y: (b.y - c.y) / c.h, w: b.w / c.w, h: b.h / c.h }));
-  } else { p.hidesRel = []; }
+    p.hidesAnc = manual.map(b => { const top = b.y - c.y, bot = c.y + c.h - (b.y + b.h);
+      return { x: (b.x - c.x) / c.w, w: b.w / c.w, h: b.h, edge: bot < top ? "b" : "t", dy: bot < top ? bot : top }; });
+  } else { p.hidesRel = []; p.hidesAnc = []; }
   if (p.smart === undefined) p.smart = true;
   persist();
   const others = items.filter(it => !it.sample && it !== it0 && it.pid === p.id);
