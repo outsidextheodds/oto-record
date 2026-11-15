@@ -145,7 +145,15 @@ const shown = it => it.sample || it.pid === store.active;   // Nov 12: each slip
 const uid = () => Math.random().toString(36).slice(2, 9);
 const clone = a => a.map(b => ({ ...b }));
 const status = t => { $("status").textContent = t || ""; };
-function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && Array.isArray(s.profiles)) store = s; }catch(e){} }
+function anchorHides(p){   // Nov 15: hide boxes keep their distance from the nearer card edge (works for every layout)
+  const c = p.crop; if (!c || !c.w || !c.h){ p.hidesAnc = []; return; }
+  p.hidesAnc = (p.hides || []).filter(b => !b.auto).map(b => { const top = b.y - c.y, bot = c.y + c.h - (b.y + b.h);
+    return { x: (b.x - c.x) / c.w, w: b.w / c.w, h: b.h, edge: bot < top ? "b" : "t", dy: bot < top ? bot : top }; });
+}
+function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && Array.isArray(s.profiles)) store = s; }catch(e){}
+  let moved = false;   // Nov 15: layouts saved before the anchor fix get converted once, no re-save needed
+  for (const p of store.profiles) if (!p.hidesAnc){ anchorHides(p); moved = true; }
+  if (moved) persist(); }
 function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
 const prof = () => store.profiles.find(p => p.id === store.active) || null;
 
@@ -593,8 +601,7 @@ $("edSaveApp").addEventListener("click", () => {
   if (ed.m.crop){
     p.cardColor = medColor(it0, ed.m.crop) || p.cardColor || null;
     const c = ed.m.crop; p.hidesRel = manual.map(b => ({ x: (b.x - c.x) / c.w, y: (b.y - c.y) / c.h, w: b.w / c.w, h: b.h / c.h }));
-    p.hidesAnc = manual.map(b => { const top = b.y - c.y, bot = c.y + c.h - (b.y + b.h);
-      return { x: (b.x - c.x) / c.w, w: b.w / c.w, h: b.h, edge: bot < top ? "b" : "t", dy: bot < top ? bot : top }; });
+    anchorHides(p);
   } else { p.hidesRel = []; p.hidesAnc = []; }
   if (p.smart === undefined) p.smart = true;
   persist();
