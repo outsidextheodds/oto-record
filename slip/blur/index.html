@@ -333,13 +333,93 @@ async function smartFit(it, p){
   it.hides = hides.length ? hides : clone(p.hides || []);
   it.smart = { card: !!card, money: flag.length, ocr: ocrOK };
 }
+
+/* ---------------- Kalshi rules (Nov 21, Carson): copy his manual blurs exactly, on every Kalshi sport ----------------
+   Crop: the slip card from the game title down to the date / OPEN POSITION row.
+   Show: game title, selection, "NN% chance", date + time, OPEN POSITION.
+   Hide: the dot + cost after "chance" (box to ~70% width), and everything between the chance row and the date row
+   (the price line chart, cost, payout) full width. Found by READING the text, not by position, so layout shifts
+   (a 2-line selection, a different sport) don't move the boxes. */
+async function ocrWords(it){
+  const k = it.w < 900 ? 2 : 1, c = document.createElement("canvas"); c.width = it.w * k; c.height = it.h * k;
+  const g = c.getContext("2d"); g.drawImage(it.src, 0, 0, c.width, c.height);
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4){ const v = 255 - (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]); d[i] = d[i + 1] = d[i + 2] = v; }
+  g.putImageData(im, 0, 0);
+  const w = await tess(), r = await w.recognize(c);
+  const box = b => ({ x: b.x0 / k, y: b.y0 / k, w: (b.x1 - b.x0) / k, h: (b.y1 - b.y0) / k });
+  return { lines: ((r.data && r.data.lines) || []).map(L => ({ text: L.text || "", ...box(L.bbox),
+           words: (L.words || []).map(W => ({ text: W.text || "", ...box(W.bbox) })) })) };
+}
+function cardEdges(it, y){   // left/right edge of the slip card on pixel row y (first sharp color step); fallback full width
+  const g = it.src.getContext("2d"), row = g.getImageData(0, Math.max(0, Math.min(it.h - 1, Math.round(y))), it.w, 1).data;
+  const dif = (a, b) => Math.abs(row[a * 4] - row[b * 4]) + Math.abs(row[a * 4 + 1] - row[b * 4 + 1]) + Math.abs(row[a * 4 + 2] - row[b * 4 + 2]);
+  let l = 0, r = it.w - 1;
+  for (let x = Math.round(it.w * 0.12); x >= 3; x--) if (dif(x, x - 3) > 24){ l = x - 1; break; }
+  for (let x = Math.round(it.w * 0.88); x < it.w - 3; x++) if (dif(x, x + 3) > 24){ r = x + 1; break; }
+  return { l, r };
+}
+/* The date / OPEN POSITION row is a dot-matrix font the text reader can't read, so find it by its pixels:
+   the first strip below the chance row with faint marks on the LEFT third and the RIGHT third, nothing in the
+   middle, and no readable text (cost/payout/chart/buttons are readable or cross the middle). */
+function findFooter(it, fromY, lines){
+  const g = it.src.getContext("2d"), y0 = Math.round(fromY), H = it.h - y0; if (H < 10) return null;
+  const d = g.getImageData(0, y0, it.w, H).data, W = it.w;
+  const zones = [[0.04, 0.40], [0.42, 0.60], [0.62, 0.97]].map(([a, b]) => [Math.round(a * W), Math.round(b * W)]);
+  const inText = y => lines.some(L => y >= L.y - 4 && y <= L.y + L.h + 4);
+  const ok = [];
+  for (let yy = 0; yy < H; yy++){
+    const y = y0 + yy; if (inText(y)){ ok.push(false); continue; }
+    const lum = x => { const i = (yy * W + x) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
+    const vals = []; for (let x = 0; x < W; x += 4) vals.push(lum(x)); vals.sort((a, b) => a - b); const med = vals[vals.length >> 1];
+    const ink = ([a, b]) => { let n = 0; for (let x = a; x < b; x++) if (lum(x) - med > 40) n++; return n; };
+    ok.push(ink(zones[0]) >= 3 && ink(zones[2]) >= 3 && ink(zones[1]) === 0);
+  }
+  let st = -1, last = -1;
+  for (let yy = 0; yy <= H; yy++){
+    const on = yy < H && ok[yy];
+    if (on){ if (st < 0) st = yy; last = yy; }
+    if (st >= 0 && (yy === H || (!on && yy - last > 3))){
+      const h = last - st + 1;
+      if (h >= it.h * 0.006 && h <= it.h * 0.05) return { y: y0 + st, h };
+      st = -1;
+    }
+  }
+  return null;
+}
+async function kalshiFit(it){
+  let o; try{ o = await ocrWords(it); }catch(e){ it.smart = { card: false, money: 0, ocr: false }; return false; }
+  const L = o.lines.filter(x => x.text.trim());
+  const chance = L.find(x => /\d{1,3}\s?%\s*chance/i.test(x.text));
+  if (!chance) return false;
+  const above = L.filter(x => x.y + x.h < chance.y);
+  const title = above.find(x => /\bvs\.?\b|fight night|: ?spread|: ?total/i.test(x.text)) || above[0];
+  const foot = L.find(x => x.y > chance.y && /open\s*position|\d{2}\s?\.\s?\d{2}\s?\.\s?\d{2}/i.test(x.text))
+            || findFooter(it, chance.y + chance.h * 2, L);
+  if (!title || !foot) return false;
+  const th = Math.max(20, title.h), fh = Math.max(14, foot.h), ch = chance.h;
+  const top = Math.max(0, title.y - 1.05 * th), bot = Math.min(it.h, foot.y + fh + 1.3 * fh);
+  const e = cardEdges(it, Math.min(it.h - 1, foot.y + fh * 1.9)), x0 = e.l, x1 = e.r + 1;
+  // end of the word "chance" (the dot + cost after it get hidden)
+  const cw = chance.words.find(w => /chance/i.test(w.text)), cx = cw ? cw.x + cw.w : chance.x + chance.w;
+  const aTop = chance.y - 0.7 * ch, bTop = chance.y + ch + 1.1 * ch, bBot = foot.y - 2.3 * fh;
+  const right = Math.max(x0 + (x1 - x0) * 0.69, ...chance.words.filter(w => w.x > cx).map(w => w.x + w.w + 0.5 * ch));
+  const N = (x, y, w, h) => ({ x: x / it.w, y: y / it.h, w: Math.max(0, w) / it.w, h: Math.max(0, h) / it.h, auto: true });
+  it.bands = [];
+  it.crop = N(x0, top, x1 - x0, bot - top);
+  it.hides = [N(cx + 0.3 * ch, aTop, Math.min(x1, right) - (cx + 0.3 * ch), bTop - aTop)];
+  if (bBot > bTop) it.hides.push(N(x0, bTop, x1 - x0, bBot - bTop));
+  it.smart = { card: true, money: 1, ocr: true, kalshi: true };
+  return true;
+}
+const isKalshi = p => !!p && /kalshi/i.test(p.name || "");
 const smartOn = p => !!p && p.smart !== false;
 async function smartAll(list){
-  const p = prof(); if (!smartOn(p)) return;
+  const p = prof(); if (!smartOn(p) && !isKalshi(p)) return;   // Nov 21: Kalshi rules need no setup
   const todo = list.filter(it => !it.sample);
   for (let i = 0; i < todo.length; i++){
     status(i === 0 && !window.Tesseract ? "Loading the text reader (first time only, then it's fast)..." : "Reading slip " + (i + 1) + " of " + todo.length + "...");
-    await smartFit(todo[i], p);
+    if (!(isKalshi(p) && await kalshiFit(todo[i]))) await smartFit(todo[i], p);   // Nov 21: Kalshi rules first
   }
 }
 
