@@ -230,7 +230,7 @@ function paint(g, it, m, ox, oy, k, preview){
   for (const b of m.bands) piece(it.src, b);
   for (const b of m.hides){ // solid fill in the slip's own background color: no text shape or length shows through
     const sw = b.w * W, sh = b.h * H; if (sw <= 0 || sh <= 0) continue;
-    g.fillStyle = bgColor(it, b); g.fillRect(X + b.x * W, Y + b.y * H, sw, sh);
+    g.fillStyle = b.fill || bgColor(it, b); g.fillRect(X + b.x * W, Y + b.y * H, sw, sh);   // Nov 21: Kalshi boxes carry their own fill
   }
 }
 /* Median color of the pixels just around a box's border = the background behind the hidden text. */
@@ -402,13 +402,14 @@ async function kalshiFit(it){
   const e = cardEdges(it, Math.min(it.h - 1, foot.y + fh * 1.9)), x0 = e.l, x1 = e.r + 1;
   // end of the word "chance" (the dot + cost after it get hidden)
   const cw = chance.words.find(w => /chance/i.test(w.text)), cx = cw ? cw.x + cw.w : chance.x + chance.w;
-  const aTop = chance.y - 0.7 * ch, bTop = chance.y + ch + 1.1 * ch, bBot = foot.y - 2.3 * fh;
+  const aTop = chance.y - 0.7 * ch, bTop = chance.y + ch + 1.1 * ch, bBot = foot.y - 1.9 * fh;
   const right = Math.max(x0 + (x1 - x0) * 0.69, ...chance.words.filter(w => w.x > cx).map(w => w.x + w.w + 0.5 * ch));
   const N = (x, y, w, h) => ({ x: x / it.w, y: y / it.h, w: Math.max(0, w) / it.w, h: Math.max(0, h) / it.h, auto: true });
   it.bands = [];
   it.crop = N(x0, top, x1 - x0, bot - top);
   it.hides = [N(cx + 0.3 * ch, aTop, Math.min(x1, right) - (cx + 0.3 * ch), bTop - aTop)];
   if (bBot > bTop) it.hides.push(N(x0, bTop, x1 - x0, bBot - bTop));
+  for (const b of it.hides){ const c = medColor(it, b); if (c) b.fill = "rgb(" + c.join(",") + ")"; }   // the area's own color, like Carson's
   it.smart = { card: true, money: 1, ocr: true, kalshi: true };
   return true;
 }
